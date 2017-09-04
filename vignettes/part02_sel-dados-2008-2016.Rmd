@@ -1,0 +1,169 @@
+---
+title: "Seleção do período de análise dados das EMA do INMET"
+author: "Jônatan Tatsch"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook: 
+    toc: yes
+  html_document:
+    fig_caption: yes
+    fig_width: 6
+    highlight: kate
+    keep_md: yes
+    number_sections: yes
+    toc: yes
+---
+
+
+# Introdução 
+
+Este documento apresenta a determinação das estatísticas básicas da temperatura do ar horária medida pelas estações meteorológicas automáticas (EMA) do INMET localizadas na região Sul do Brasil.
+Os dados usados são de EMAs com pelo menos 4 anos de dados.
+
+# Pacotes, funções e pré-configurações
+
+Carregando pacotes necessários.
+
+```{r setup}
+# limpa espaço de trabalho
+rm(list = ls()) 
+# carrega pacotes necessários
+pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr")
+easypackages::libraries(pacotes)
+# configura chuncks
+# carrega scripts necessários
+source("../R/gaps.R")
+source("../R/utils.R")
+source("../R/complete_dates.R")
+# definindo globalmente tz = "UTC"
+Sys.setenv(TZ = "UTC")
+```
+
+
+
+# Dados
+
+
+```{r chunk4}
+tar_data_sel <- readRDS("../output/tar_data_sel_inmet_sul.rds")
+sites_sel <- unique(tar_data_sel$site)
+# carregar os metadados (rds com coordenadas e nomes das EMA)
+tar_info <- readRDS("../data/info_inmet_sul_2000_2016.rds") %>%
+  filter(site %in% sites_sel)
+tar_info 
+glimpse(tar_data_sel)
+```
+
+Garantindo que as séries contenham 24 horas em cada dia.
+
+```{#r}
+x <- tar_data_sel %>%
+  complete_dates(group = "site", full_day = FALSE)
+```
+
+
+
+# Período de dados
+
+
+
+## Período de dados
+
+```{r}
+tar_periods <- tar_data_sel %>%
+  group_by(site) %>%
+  summarise(sdate = as.Date(min(date)) # data inicial
+           ,edate = as.Date(max(date)) # data final
+           ,period = round(time_length(edate-sdate, unit = "year"), 1))  %>% # período
+            # desagrupando por site
+            ungroup() %>%
+  arrange(desc(period)) %>%
+  # combinando com info para saber nome das EMAs
+  left_join(select(tar_info, site, name, state), by = "site")
+tar_periods
+```
+
+
+
+# Resumo de dados ausentes
+
+Quantificar a quantidade de dados faltantes por EMA.
+
+## Estatísticas gerais
+
+```{r}
+tar_hly_summary <- tar_data_sel %>%
+  group_by(site) %>%
+  dplyr::summarise(tavg = round(mean(tair,na.rm = TRUE), 1), # temp média
+                   tmax_abs = max(tair, na.rm = TRUE),
+                   tmin_abs = min(tair, na.rm = TRUE),
+                   #dtr_max = tmax-tmin, # amplitude térmica máxima
+                   # % de dados faltantes
+                   missing = round(percent_NA(tair), 1),
+                   # tamnho da falha mais longa
+                   long_gap = longest_gap(tair),
+                   #data de início da maior falha
+                   date_slg = date_longest_gap(tair, date))  %>%
+  # desagrupando por site
+  ungroup() %>%
+  # combinando com a tabela de informações das EMA
+  left_join(select(tar_info, site, name), by = "site") %>%
+  arrange_vars(c("name" = 2))
+tar_hly_summary
+```
+
+## Estatísticas térmicas diárias.
+
+
+```{r}
+# medias diarias
+tar_daily <- tar_data_sel %>%
+  group_by(site, day = as.Date(date)) %>%
+  dplyr::summarise(tmax_d = max(tair, na.rm = TRUE),
+                   tmin_d = min(tair, na.rm = TRUE),
+                   tavg_d = mean(tair, na.rm = TRUE),
+                   dtr_d = tmax_d - tmin_d,
+                   n_data = sum(!is.na(tair))) %>%
+  ungroup() %>%
+  mutate_at(vars(tmax_d:n_data), funs(replace_inf))
+tar_daily
+
+tar_daily_summary <- tar_daily %>%
+  group_by(site) %>%
+   summarise_at(vars(tmax_d:n_data), mean, na.rm = TRUE) %>%
+   ungroup() %>%
+  mutate_at(vars(tmax_d:n_data), round, digits = 1) %>%
+  rename("n_avg" = n_data)
+tar_daily_summary
+```
+
+# Combinando informações 
+
+```{r}
+tar_summary_4 <- tar_periods %>%
+  full_join(select(tar_hly_summary, -name), by = "site") %>%
+  arrange_vars(c("name" = 2, "state" = 3)) %>%
+  full_join(tar_daily_summary, by = "site")
+tar_summary_4
+
+emas_ts4y <- tar_summary_4$site
+site = tar_info$site[tar_info$site %in% emas_ts4y]
+lon = tar_info$lon[tar_info$site %in% emas_ts4y]
+lat = tar_info$lat[tar_info$site %in% emas_ts4y]
+alt = tar_info$alt[tar_info$site %in% emas_ts4y]
+lla_ts4y <- data.frame(site,lon,lat,alt)
+tar_summary_4y <- tar_summary_4 %>% full_join(lla_ts4y, by = "site")
+tar_summary_4y
+```
+```{#r}
+arrange(tar_info,site)
+```
+
+
+```{r}
+tar_summary_file <- "tar_summary_inmet_sul_2008_2016.rds"
+saveRDS(tar_summary_4y, file = file.path("../output", tar_summary_file))
+```
+
+
+

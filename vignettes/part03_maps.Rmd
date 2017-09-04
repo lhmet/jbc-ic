@@ -1,0 +1,351 @@
+---
+title: "Mapas dos dados das EMAs do sul do Brasil durante o período de 2008 até 2016"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+# Pré-requisitos
+
+```{r}
+## para instalar um pacote use
+# install.packages("raster")
+## limpando espaço de trabalho
+rm(list = ls())
+library(devtools)
+## pacotes requeridos
+pcks <- c("dplyr", "ggplot2","viridis", "lubridate", "scales", "raster", "viridis", "ggrepel")
+library(easypackages)
+easypackages::libraries(pcks)
+source("/home/jonas/IC/R/gg_bubble.R")
+```
+
+# Dados
+## Delimitação dos estados brasileiros
+
+```{r}
+limites2015 <- "ftp://geoftp.ibge.gov.br/cartas_e_mapas/bases_cartograficas_continuas/bc250/versao2015/Shapefile/Limites_v2015_20160809.zip"
+# nome e caminho para o arquivo que será baixado, altere se necessário
+(zip_file <- paste0("../data/", basename(limites2015)))
+
+zip_file <- "/home/jonas/data/Limites_v2015_20160809.zip"
+
+```
+
+```{#r}
+# baixando arquivo compactado
+download.file(limites2015, destfile = zip_file)
+```
+
+```{r}
+# diretório para descompactar
+extract_dir <- gsub("\\.zip", "", zip_file)
+extract_dir
+```
+
+```{r}
+# descompactando arquivo
+unzip(zip_file, exdir = extract_dir)
+# lista dos shapefiles contidos no arquivo compactado
+shapefiles_list <- list.files(extract_dir,
+                              pattern = "shp$", 
+                              recursive = TRUE, 
+                              full.names = TRUE)
+# shapefiles_list
+```
+
+```{r}
+# nome do arquivo shapefile dos estados
+br_states_file <- grep(x = shapefiles_list, 
+                       pattern = "Unidade_Federacao", 
+                       value = TRUE)
+# importa shape
+br_states <- shapefile(br_states_file)
+```
+
+```{r}
+# projeta para lonlat
+br_states <- spTransform(br_states, CRSobj = CRS("+proj=longlat +ellps=WGS84"))
+plot(br_states, axes = TRUE)
+```
+
+```{r}
+sul <- br_states[br_states@data$NOME %in% c("Rio Grande do Sul", "Santa Catarina", "Paraná"), ]
+```
+
+```{#r}
+# 'fortificando' os dados (conversão para dataframe)
+class(sul)
+```
+
+```{r}
+sul_df <- fortify(sul)
+```
+
+```{#r}
+head(sul_df)
+```
+
+```{#r}
+class(sul_df)
+```
+
+# Altitude do terreno
+
+```{r}
+dem <- getData(name = "alt", download = TRUE, path = "/home/jonas/data", country = "BRA")
+dem
+```
+
+```{#r}
+class(dem)
+```
+
+```{r}
+# extent(dem)
+# minha_extent <- extent(-50, -40, -20, -10)
+# plot(dem); plot(minha_extent, add = TRUE)
+dem_sul <- crop(dem, sul)
+# mascará para os estados
+dem_sul <- mask(dem, sul)
+#plot(dem_sul); plot(sul, add = TRUE)
+dem_sul_df <- data.frame(lon = xFromCell(dem_sul, cell = 1:ncell(dem_sul)),
+                         lat = yFromCell(dem_sul, cell = 1:ncell(dem_sul)),
+                         alt = values(dem_sul))
+#summary(dem_sul_df)
+# removendo linhas de dados faltantes
+dem_sul_df <- dem_sul_df[complete.cases(dem_sul_df), ]
+head(dem_sul_df)
+```
+
+```{#r}
+class(dem_sul_df)
+```
+
+# Informações das EM
+
+```{r}
+info <- readRDS(file = "/home/jonas/IC/output/tar_summary_inmet_sul_2008_2016.rds")
+info
+```
+
+```{#r}
+# estrutura dos dados
+str(info)
+```
+
+```{#r}
+# nome das variáveis do data.frame (tabela de dados)
+names(info)
+```
+
+```{##r}
+info <- read.table(file = "mydata.txt", 
+                   header = FALSE,  # dados tem cabeçalho TRUE/FALSE
+                   sep = " ",       # separador das colunas (",", "\t", " ")
+                   na.strings = "-999.9") # string repreentando dados faltantes
+# se os dados não tiverem cabeçalho (header = FALSE)
+names(info) <- c("site", "tmax_med", "tmin_med", ...)
+# salvando como RDS para importação mais rápida
+saveRDS(info, "info_sumary_tair_sul.rds")
+```
+
+# Gráfico com período de dados
+
+```{r}
+# mapa da % de dados faltantes em cada EM
+tmin_plot <- gg_bubble(data = info      # tabela de info das EM
+                       ,z = "tavg"         # coluna da tabela data
+                       ,colors_z = viridis     # paleta para variação de z
+                       ,limites = sul_df       # dataframe com contorno da região (gerado de algum shapefile)
+                       ,raster_bg = dem_sul_df # raster de background (altitude, decividade, etc)
+                       ,colors_bg = gray.colors # paleta de cores do raster 
+                       
+                       ,z_legend = "Tmin (°C)" # texto para legenda
+                       ,text_color = "red")     # cor do texto para o identificador ("site") das estações 
+tmin_plot
+```
+
+
+################################################################################
+
+```{r}
+# para período de dados
+period_plot <-  gg_bubble(data = info
+                          ,z = "period"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Period (years)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+period_plot
+```
+
+```{r}
+# para tavg de dados
+tavg_plot <-  gg_bubble(data = info
+                          ,z = "tavg"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Average Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tavg_plot
+```
+
+```{r}
+# para tmax_abs de dados
+tmax_abs_plot <-  gg_bubble(data = info
+                          ,z = "tmax_abs"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Abs. Max. Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tmax_abs_plot
+```
+
+```{r}
+# para tmin_abs de dados
+tmin_abs_plot <-  gg_bubble(data = info
+                          ,z = "tmin_abs"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Abs. Min. Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tmin_abs_plot
+```
+
+```{r}
+# para missing de dados
+missing_plot <-  gg_bubble(data = info
+                          ,z = "missing"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Missing (%)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+missing_plot
+```
+
+```{#r}
+dados <- arrange(
+  readRDS("/home/jonas/IC/data/dataSel_inmet_sul_localtime.rds"), site)
+
+total.dates(dados)
+```
+
+```{r}
+# para long_gap de dados
+long_gap_plot <-  gg_bubble(data = info
+                          ,z = "long_gap"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Long Gap (hours)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+long_gap_plot
+```
+
+```{#r}
+failure.datas(dados)
+```
+
+```{r}
+# para tmax_d de dados
+tmax_d_plot <-  gg_bubble(data = info
+                          ,z = "tmax_d"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Daily Max. Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tmax_d_plot
+```
+
+```{r}
+# para tmin_d de dados
+tmin_d_plot <-  gg_bubble(data = info
+                          ,z = "tmin_d"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Daily Min. Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tmin_d_plot
+```
+
+```{r}
+# para tavg_d de dados
+tavg_d_plot <-  gg_bubble(data = info
+                          ,z = "tavg_d"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Daily Average Temp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+tavg_d_plot
+```
+
+```{r}
+# para dtr_d de dados
+dtr_d_plot <-  gg_bubble(data = info
+                          ,z = "dtr_d"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = " Daily Ther. Amp. (°)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+dtr_d_plot
+```
+
+```{r}
+# para n_avg de dados
+n_avg_plot <-  gg_bubble(data = info
+                          ,z = "n_avg"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "N Average"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+n_avg_plot
+```
+
+```{r}
+# para long_gap de dados
+alt_plot <-  gg_bubble(data = info
+                          ,z = "alt"
+                          ,colors_z = viridis
+                          ,limites = sul_df 
+                          #,raster_bg = mdet_rs_df 
+                          #,colors_bg = gray.colors
+                          ,z_legend = "Altitude (m)"
+                          ,text_color = "black"
+                          ,text_size = 2.5) 
+alt_plot
+```
