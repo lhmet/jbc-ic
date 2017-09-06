@@ -3,15 +3,16 @@ title: "Seleção do período de análise dados das EMA do INMET"
 author: "Jônatan Tatsch"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
-  html_notebook: 
+  html_notebook:
     toc: yes
   html_document:
     fig_caption: yes
     fig_width: 6
-    highlight: kate
     keep_md: yes
     number_sections: yes
     toc: yes
+    theme: united
+    highlight: tango
 ---
 
 
@@ -20,8 +21,6 @@ output:
 Este documento relata os critérios utilizados para definição do período de dados para aplicação dos testes de controle de qualidade da temperatura do ar. Como critério inicial serão selecionadas estações meteorológicas automáticas (EMA) dos locais com pelo menos 4 anos de dados (podem ser descontínuos). 
 
 As etapas para seleção do período são:
-
-- carregar os dados
 
 - regularizar as séries temporais de cada EMA para garantir que todas tenham 24 h em cada dia e 365 (ou 366 dias, se ano bissexto) em cada ano
 
@@ -38,15 +37,13 @@ Carregando pacotes necessários.
 # limpa espaço de trabalho
 rm(list = ls()) 
 # carrega pacotes necessários
-pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr")
+pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr", 
+             "magrittr", "padr")
 easypackages::libraries(pacotes)
 # configura chuncks
 # carrega scripts necessários
 source("../R/gaps.R")
 source("../R/utils.R")
-source("../R/complete_dates.R")
-
-#detach("package:raster", unload = TRUE)
 ```
 
 Os dados são armazenados usando o Tempo Universal Coordenado [UTC](https://pt.wikipedia.org/wiki/Tempo_Universal_Coordenado). Portanto, podemos definir esse horário como padrão nessa sessão do R. Assim qualquer conversão ou operação com datas e horários usando objetos [POSIX](https://stat.ethz.ch/R-manual/R-devel/library/base/html/DateTimeClasses.html) serão realizadas em UTC.
@@ -56,7 +53,7 @@ Os dados são armazenados usando o Tempo Universal Coordenado [UTC](https://pt.w
 Sys.setenv(TZ = "UTC")
 ```
 
-# Dados
+# Dados brutos
 
 
 ```{r chunk4}
@@ -68,23 +65,38 @@ tar_data <- readRDS("../data/dataSel_inmet_sul_localtime.rds")
 glimpse(tar_data)
 ```
 
-Garantindo que as séries contenham 24 horas em cada dia.
+# Dados temporalmente consistentes
 
-```{r}
+Os dados podem conter falhas temporais. Isso implica que podem haver saltos temporais nos dados. Para garantir que os dados fiquem consitentes temporal (cada estação com dias contendo 24 horas e anos com 365 ou 366 dias) faz-se o preenchimento dos horários faltantes com as datas adequadas e os valores das variáveis recebem `NA`.
 
+```{r, eval=TRUE}
+# verificando intervalo de tempo 
+time_step <- tar_data %>%
+  filter(., site == "A801") %>%
+  select(date) %$%
+  get_interval(date)
+time_step
+nrow(tar_data)
 ```
 
 
 
-# Período de dados
+```{r}
+tar_data_pad <- tar_data %>%
+  pad(interval = time_step, group = "site", break_above = 10)
+nrow(tar_data_pad)
+```
 
-## Ranking de falhas
+
+# Período de dados
 
 Antes de determinar o período de dados de cada EMA é preciso remover EMAs que conhenham muitos dados faltantes. Isso geralmente ocorre para EMAs inseridas recentemente no conjunto de dados. EMas que contenham somente dados faltantes devem ser desconsideradas do conjunto de dados.
 
+## Ranking de falhas
+
 ```{r, }
 # ranking de falhas das EMAs
-rank_falt <- tar_data %>%
+rank_falt <- tar_data_pad %>%
   group_by(site) %>%
   summarise(N = n(), 
             falt = n_NA(tair), 
@@ -101,11 +113,13 @@ not_informative
 Removendo EMAs sem dados.
 
 ```{r}
-glimpse(tar_data)
-tar_data <- tar_data %>%
+glimpse(tar_data_pad)
+tar_data_pad <- tar_data_pad %>%
   filter(! site %in% not_informative$site)
-glimpse(tar_data)
+glimpse(tar_data_pad)
 ```
+
+> daqui para baixo precisa substituir tar_data por tar_data_pad.
 
 ## Período de dados
 
