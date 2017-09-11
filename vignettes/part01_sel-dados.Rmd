@@ -11,14 +11,13 @@ output:
     keep_md: yes
     number_sections: yes
     toc: yes
-    theme: united
-    highlight: tango
+
 ---
 
 
 # Introdução 
 
-Este documento relata os critérios utilizados para definição do período de dados para aplicação dos testes de controle de qualidade da temperatura do ar. Como critério inicial serão selecionadas estações meteorológicas automáticas (EMA) dos locais com pelo menos 4 anos de dados (podem ser descontínuos). 
+Este documento relata os critérios utilizados para definição do período de dados para aplicação dos testes de controle de qualidade da temperatura do ar. Como critério inicial serão selecionadas estações meteorológicas automáticas (EMA) com pelo menos 4 anos de dados (podem ser descontínuos).
 
 As etapas para seleção do período são:
 
@@ -88,11 +87,13 @@ nrow(tar_data_pad)
 ```
 
 
-# Período de dados
+# Seleção de EMAs
 
-Antes de determinar o período de dados de cada EMA é preciso remover EMAs que conhenham muitos dados faltantes. Isso geralmente ocorre para EMAs inseridas recentemente no conjunto de dados. EMas que contenham somente dados faltantes devem ser desconsideradas do conjunto de dados.
+## Critério de disponibilidade mínima de observações
 
-## Ranking de falhas
+Antes de determinar o período de dados de cada EMA é preciso remover as EMAs que conhenham muitos (todos) dados faltantes. Isso geralmente ocorre para EMAs inseridas recentemente no conjunto de dados. 
+
+- Classificação das EMAs pela % de falhas
 
 ```{r, }
 # ranking de falhas das EMAs
@@ -114,21 +115,23 @@ Removendo EMAs sem dados.
 
 ```{r}
 glimpse(tar_data_pad)
-tar_data_pad <- tar_data_pad %>%
+# dados preenchidos e informativo
+tar_data_pad_inf <- tar_data_pad %>%
   filter(! site %in% not_informative$site)
-glimpse(tar_data_pad)
+glimpse(tar_data_pad_inf)
 ```
 
-> daqui para baixo precisa substituir tar_data por tar_data_pad.
 
-## Período de dados
+## Critérios baseados no período de dados
+
+### Período de dados
 
 ```{r}
-tar_periods <- tar_data %>%
+tar_periods <- tar_data_pad_inf %>%
   group_by(site) %>%
-  summarise(sdate = as.Date(min(date)) # data inicial
-           ,edate = as.Date(max(date)) # data final
-           ,period = round(time_length(edate-sdate, unit = "year"), 1))  %>% # período
+  summarise(start = as.Date(min(date)) # data inicial
+           ,end = as.Date(max(date)) # data final
+           ,period = round(time_length(end - start, unit = "year"), 1))  %>% # período
             # desagrupando por site
             ungroup() %>%
   arrange(desc(period)) %>%
@@ -137,64 +140,90 @@ tar_periods <- tar_data %>%
 tar_periods
 ```
 
+### Seleção de dados por período mínimo e ano inicial
+
+As EMAs selecionadas devem ter um período de pelo menos 4 anos e baseado em trabalhos prévios devem começar em 2008.
+
+```{r}
+tar_data_sel <- tar_data_pad_inf %>%
+  selectByDate(year = 2008:2016)
+glimpse(tar_data_pad_inf)
+# EMAs com pelo menos 4 anos (sites selecionados)
+sites_sel <- tar_periods %>%
+  filter(period >= 4) %>%
+  select(site) %>%
+  pull()
+sites_sel
+length(sites_sel)
+# filtrar dados só com as EMAs do sites_sel
+tar_data_sel <- filter(tar_data_sel, site %in% sites_sel)
+glimpse(tar_data_sel)
+```
+
+Salvar dados selecionados 
+
+```{r}
+saveRDS(tar_data_sel, file = "../output/tar-data-inmet-4anos-sul.rds")
+```
 
 
-# Resumo de dados ausentes
-
-Quantificar a quantidade de dados faltantes por EMA.
+# Quantificação de lacunas nas séries temporais das EMAs
 
 ```{r , include = FALSE}
 safe_dlg <- safely(date_longest_gap)
 # investigando problema no gaps
-sites <- unique(tar_data$site)
+sites <- unique(tar_data_pad_inf$site)
 gp <- plyr::llply(sites, 
             function(isite){
               cat(isite, "\n")
-              x <- filter(tar_data, site == isite)
+              x <- filter(tar_data_pad_inf, site == isite)
               #gaps(x$tair)
               #date_longest_gap(x$tair, x$date)
               safe_dlg(x$tair, x$date)
             })
 # EMA sem falhas
-d <-  filter(tar_data, site == sites[87]) #%>% View()
+d <-  filter(tar_data_pad_inf, site == sites[87]) #%>% View()
   #timePlot(d, "tair", date.format = "%b-%d\n%Y")
 gaps(d$tair)
 # EMA com falhas no início
-d <-  filter(tar_data, site == sites[86]) #%>% View()
+d <-  filter(tar_data_pad_inf, site == sites[86]) #%>% View()
 gaps(d$tair)
 # problema de warnings
 # the condition has length > 1 and only the first element will be used
-d <-  filter(tar_data, site == "A818") #%>% View()
+d <-  filter(tar_data_pad_inf, site == "A818") #%>% View()
 gaps(d$tair)
 longest_gap(d$tair)
 date_longest_gap(d$tair,d$date)
-
 ```
 
-## Estatísticas gerais
+
 
 ```{r}
-tar_hly_summary <- tar_data %>%
+tar_gaps_summary <- tar_data_sel %>%
   group_by(site) %>%
-  dplyr::summarise(tavg = round(mean(tair,na.rm = TRUE), 1), # temp média
-                   tmax_abs = max(tair, na.rm = TRUE),
-                   tmin_abs = min(tair, na.rm = TRUE),
-                   #dtr_max = tmax-tmin, # amplitude térmica máxima
-                   # % de dados faltantes
+  dplyr::summarise(# % de dados faltantes
                    missing = round(percent_NA(tair), 1),
                    # tamnho da falha mais longa
                    long_gap = longest_gap(tair),
                    #data de início da maior falha
-                   date_slg = date_longest_gap(tair, date))  %>%
+                   date_slg = date_longest_gap(tair, date)
+                   #tavg = round(mean(tair,na.rm = TRUE), 1), # temp média
+                   #tmax_abs = max(tair, na.rm = TRUE),
+                   #tmin_abs = min(tair, na.rm = TRUE),
+                   #dtr_max = tmax-tmin, # amplitude térmica máxima
+                   )  %>%
   # desagrupando por site
   ungroup() %>%
   # combinando com a tabela de informações das EMA
-  left_join(select(tar_info, site, name), by = "site") %>%
-  arrange_vars(c("name" = 2))
-tar_hly_summary
+  left_join(tar_periods, by = "site") %>%
+  arrange_vars(c("name" = 2, "period" = 3)) %>%
+  arrange(desc(missing))
+tar_gaps_summary
 ```
 
-## Estatísticas térmicas diárias.
+> Mover isso para outro RMD
+
+## Estatísticas térmicas 
 
 ```{r, include= FALSE}
 summary(tar_data)
@@ -204,8 +233,28 @@ filter(tar_data, site == "A801") %>%
 
 ```
 
+## Horárias
 
-```{r}
+```{r, include=FALSE}
+tar_hly_summary <- tar_data_pad_inf %>%
+  group_by(site) %>%
+  dplyr::summarise(tavg = round(mean(tair,na.rm = TRUE), 1), # temp média
+                   tmax_abs = max(tair, na.rm = TRUE),
+                   tmin_abs = min(tair, na.rm = TRUE),
+                   dtr_max = tmax-tmin, # amplitude térmica máxima
+                   )  %>%
+  # desagrupando por site
+  ungroup() %>%
+  # combinando com a tabela de informações das EMA
+  left_join(select(tar_info, site, name), by = "site") %>%
+  arrange_vars(c("name" = 2)) %>%
+  arrange(desc(missing))
+```
+
+
+## Diárias
+
+```{r, include=FALSE}
 # medias diarias
 tar_daily <- tar_data %>%
   group_by(site, day = as.Date(date)) %>%
@@ -233,9 +282,9 @@ tar_daily_summary
 
 ```{r}
 tar_summary <- tar_periods %>%
-  full_join(select(tar_hly_summary, -name), by = "site") %>%
+  full_join(select(tar_gaps_summary, -name), by = "site") %>%
   arrange_vars(c("name" = 2, "state" = 3)) %>%
-  full_join(tar_daily_summary, by = "site")
+  #full_join(tar_daily_summary, by = "site")
 tar_summary
 ```
 
@@ -245,23 +294,6 @@ saveRDS(tar_summary_file, file = file.path("../output", tar_summary_file))
 ```
 
 
-# Seleção do período
 
-O controle de qualidade será aplicado a um período de dados comum a todas EMAs de pelo menos 4 anos.
-
-```{r}
-tar_data_sel <- tar_data %>%
-  selectByDate(year = 2008:2016)
-# EMAs com pelo menos 4 anos (sites selecionados)
-sites_sel <- tar_summary %>%
-  filter(period >= 4) %>%
-  select(site) %>%
-  pull()
-sites_sel
-# filtrar dados só com as EMAs do sites_sel
-tar_data_sel <- filter(tar_data_sel, site %in% sites_sel)
-head(tar_data_sel)
-saveRDS(tar_data_sel, file = "../output/tar_data_sel_inmet_sul.rds")
-```
 
 
