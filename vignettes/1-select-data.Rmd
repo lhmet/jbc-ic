@@ -1,0 +1,340 @@
+---
+title: "Seleção do período de análise dados das EMA do INMET"
+author: "Jônatan Tatsch"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: yes
+  html_document:
+    fig_caption: yes
+    fig_width: 6
+    keep_md: yes
+    number_sections: yes
+    toc: yes
+
+---
+
+
+# Introdução 
+
+Este documento relata os critérios utilizados para definição do período de dados para aplicação dos testes de controle de qualidade da temperatura do ar. Como critério inicial serão selecionadas estações meteorológicas automáticas (EMA) com pelo menos 4 anos de dados (podem ser descontínuos).
+
+As etapas para seleção do período são:
+
+- regularizar as séries temporais de cada EMA para garantir que todas tenham 24 h em cada dia e 365 (ou 366 dias, se ano bissexto) em cada ano
+
+- determinar o período de dados de cada EMA (n° de anos)
+
+- quantificar o número de dados válidos (não faltantes) para cada EMA
+
+
+# Pacotes, funções e pré-configurações
+
+Carregando pacotes necessários.
+
+```{r setup, message=FALSE}
+# limpa espaço de trabalho
+rm(list = ls()) 
+# carrega pacotes necessários
+pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr", 
+             "magrittr", "padr")
+easypackages::libraries(pacotes)
+# configura chuncks
+# carrega scripts necessários
+source("../R/gaps.R")
+source("../R/utils.R")
+source("../R/gg_bubble.R")
+```
+
+Os dados são armazenados usando o Tempo Universal Coordenado [UTC](https://pt.wikipedia.org/wiki/Tempo_Universal_Coordenado). Portanto, podemos definir esse horário como padrão nessa sessão do R. Assim qualquer conversão ou operação com datas e horários usando objetos [POSIX](https://stat.ethz.ch/R-manual/R-devel/library/base/html/DateTimeClasses.html) serão realizadas em UTC.
+
+```{r chunk1}
+# definindo globalmente tz = "UTC"
+Sys.setenv(TZ = "UTC")
+```
+
+# Dados brutos
+
+## Informações das EMAs (metadados)
+
+Informações como as coordenadas de localização, altitude, nome e código das EMAs foram extraídas do cabeçalho contido no arquivo excel com os dados de cada EMA. Entretanto, notou-se que em alguns casos houve erro de digitação das coordenadas quando comparadas aquelas disponíveis no site do INMET.
+
+```{r chunk4}
+# metadados baseados no cabeçalho dos arquivos xls
+tar_info_files <- readRDS("../data/info_inmet_sul_2000_2016.rds")
+nrow(tar_info_files)
+filter(tar_info_files, site == "A825")
+#tar_info1
+names(tar_info_files)
+# metadados baseados no site do inmet (ver "..R/update_aws_info_sul.R")
+tar_info_www <- readRDS("../output/tar-info-inmet-update-south.rds") %>%
+   select(-url, -start) %>%
+   rename("site" = id, 
+          "name" = city)
+#tar_info_site
+names(tar_info_www)
+# Estação desativada?
+desativadas <- filter(tar_info_files, !site %in% tar_info_www$site)
+desativadas
+# substituição das coordenadas por valores mais precisos 
+# http://www.unidata.ucar.edu/mailing_lists/archives/idd-brasil/2009/msg00075.html
+# http://www.dca.ufcg.edu.br/posgrad_met/dissertacoes/WagnerdeAragaoBezerra_2013.pdf
+desativadas <- desativadas %>%
+  mutate(lon = -53.0286111, lat = -24.18499999)
+tar_info <- bind_rows(tar_info_www, desativadas) %>%
+  # fix station name
+  mutate(name = str_to_title(name))
+#DT::datatable(tail(tar_info))
+tail(tar_info)
+```
+
+## Dados meteorológicos
+
+```{r}
+# carregar dados meteorológicos das EMA
+tar_data <- readRDS("../data/dataSel_inmet_sul_localtime.rds")
+glimpse(tar_data)
+#"A825" %in% unique(tar_data$site) 
+```
+
+
+
+# Dados temporalmente consistentes
+
+Os dados podem conter falhas temporais. Isso implica que podem haver saltos temporais nos dados. Para garantir que os dados fiquem consitentes temporal (cada estação com dias contendo 24 horas e anos com 365 ou 366 dias) faz-se o preenchimento dos horários faltantes com as datas adequadas e os valores das variáveis recebem `NA`.
+
+```{r, eval=TRUE}
+# verificando intervalo de tempo 
+time_step <- tar_data %>%
+  filter(., site == "A801") %>%
+  select(date) %$%
+  get_interval(date)
+time_step
+nrow(tar_data)
+```
+
+
+
+```{r}
+tar_data_pad <- tar_data %>%
+  pad(interval = time_step, group = "site", break_above = 10)
+nrow(tar_data_pad)
+```
+
+```{r, include = FALSE}
+c(365, 366)*24
+tar_data_pad %>%
+  filter(year(date) >= 2008) %>%
+  group_by(site, year = year(date)) %>%
+  summarise(N = n())
+```
+
+# Seleção de EMAs
+
+## Critério de disponibilidade mínima de observações
+
+Antes de determinar o período de dados de cada EMA é preciso remover as EMAs que conhenham muitos (todos) dados faltantes. Isso geralmente ocorre para EMAs inseridas recentemente no conjunto de dados. 
+
+- Classificação das EMAs pela % de falhas
+
+```{r, }
+# ranking de falhas das EMAs
+rank_falt <- tar_data_pad %>%
+  group_by(site) %>%
+  summarise(N = n(), 
+            falt = n_NA(tair), 
+            falt_perc = percent_NA(tair)) %>%
+  arrange(desc(falt_perc)) %>%
+  # combinando com info para saber nome das EMAs
+  left_join(select(tar_info, site, name), by = "site")
+rank_falt
+not_informative <- rank_falt %>%
+  filter(N == falt)
+not_informative
+```
+
+Removendo EMAs sem dados.
+
+```{r}
+glimpse(tar_data_pad)
+# dados preenchidos e informativo
+tar_data_pad_inf <- tar_data_pad %>%
+  filter(! site %in% not_informative$site)
+glimpse(tar_data_pad_inf)
+```
+
+
+## Critérios baseados no período de dados
+
+### Período de dados
+
+```{r}
+tar_periods <- tar_data_pad_inf %>%
+  group_by(site) %>%
+  summarise(start = as.Date(min(date)) # data inicial
+           ,end = as.Date(max(date)) # data final
+           ,period = round(time_length(end - start, unit = "year"), 1))  %>% # período
+            # desagrupando por site
+            ungroup() %>%
+  arrange(desc(period)) %>%
+  # combinando com info para saber nome das EMAs
+  left_join(select(tar_info, site, name, state, lon, lat), by = "site")
+tar_periods
+```
+
+
+
+### Seleção de dados por período mínimo e ano inicial
+
+As EMAs selecionadas devem ter um período de pelo menos 4 anos e baseado em trabalhos prévios devem começar em 2008.
+
+```{r}
+begin_year <- 2008
+end_year <- 2016
+period_thres <- 4
+
+tar_data_sel <- tar_data_pad_inf %>%
+  selectByDate(year = begin_year:end_year)
+glimpse(tar_data_pad_inf)
+# EMAs com pelo menos 4 anos (sites selecionados)
+sites_sel <- tar_periods %>%
+  filter(period >= period_thres) %>%
+  select(site) %>%
+  pull()
+sites_sel
+length(sites_sel)
+# filtrar dados só com as EMAs do sites_sel
+tar_data_sel <- filter(tar_data_sel, site %in% sites_sel)
+glimpse(tar_data_sel)
+```
+
+Salvar dados selecionados pelos critérios de período mínimo de 4 anos e ano inicial 2008.
+
+```{r}
+file_data_sel <- paste0("tar-data-inmet-", 
+                        begin_year, "-", 
+                        end_year, "-",
+                        period_thres, "yrs-",
+                        "south.rds")
+saveRDS(tar_data_sel, file = file.path("../output", file_data_sel))
+```
+
+
+
+
+Gráfico do período de dados.
+
+```{r plot-periodo, fig.width=9.3, fig.height=7.25, fig.align='center' }
+estados <- readRDS("../data/estados_sul.rds")
+filter(tar_periods, site == "A825")
+gg_periodo <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
+                     #data = tar_periods
+                     ,z = "period"
+                     #,breaks = pretty(tar_periods$period, n = 6)
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Período (anos)"
+                     ,text_color = "gray30"
+                     ,text_size = 3.8
+                     ,point_size = 4
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)) 
+gg_periodo
+```
+
+# Disponibilidade de dados
+
+```{r , include = FALSE}
+safe_dlg <- safely(date_longest_gap)
+# investigando problema no gaps
+sites <- unique(tar_data_pad_inf$site)
+gp <- plyr::llply(sites, 
+            function(isite){
+              cat(isite, "\n")
+              x <- filter(tar_data_pad_inf, site == isite)
+              #gaps(x$tair)
+              #date_longest_gap(x$tair, x$date)
+              safe_dlg(x$tair, x$date)
+            })
+# EMA sem falhas
+d <-  filter(tar_data_pad_inf, site == sites[87]) #%>% View()
+  #timePlot(d, "tair", date.format = "%b-%d\n%Y")
+gaps(d$tair)
+# EMA com falhas no início
+d <-  filter(tar_data_pad_inf, site == sites[86]) #%>% View()
+gaps(d$tair)
+# problema de warnings
+# the condition has length > 1 and only the first element will be used
+d <-  filter(tar_data_pad_inf, site == "A818") #%>% View()
+gaps(d$tair)
+longest_gap(d$tair)
+date_longest_gap(d$tair,d$date)
+```
+
+
+
+```{r}
+tar_gaps <- tar_data_sel %>%
+  group_by(site) %>%
+  dplyr::summarise(# % de dados faltantes
+                   missing = round(percent_NA(tair), 1),
+                   valid = 100 - missing,
+                   #long_valid = length(na.contiguous(tair)),
+                   long_valid = longest_gap(tair, reverse = TRUE),
+                   # tamnho da falha mais longa
+                   long_gap = longest_gap(tair),
+                   #data de início da maior falha
+                   date_slg = date_longest_gap(tair, date),
+                   date_slv = date_longest_gap(tair, date, reverse = TRUE)
+                   )  %>%
+  # desagrupando por site
+  ungroup() %>%
+  # combinando com a tabela de informações das EMA
+  left_join(tar_periods, by = "site") %>%
+  arrange_vars(c("name" = 2, "period" = 3)) %>%
+  arrange(desc(missing))
+tar_gaps
+```
+
+```{r}
+# convertendo max duração contínua de horas faltantes ou válidas para dias
+tar_gaps <- tar_gaps %>%
+  mutate(long_valid = round(time_length(hours(long_valid), unit = "day")),
+         long_gap = round(time_length(hours(long_valid), unit = "day")))
+tar_gaps
+```
+
+Gráfico da disponibilidade de dados.
+
+```{r plot-disp, fig.width=9.3, fig.height=7.25, fig.align='center' }
+estados <- readRDS("../data/estados_sul.rds")
+filter(tar_periods, site == "A825")
+gg_disp <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
+                     #data = tar_periods
+                     ,z = "period"
+                     #,breaks = pretty(tar_periods$period, n = 6)
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Período (anos)"
+                     ,text_color = "gray30"
+                     ,text_size = 3.8
+                     ,point_size = 4
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)) 
+gg_disp
+```
+
+```{r}
+file_gaps <- paste0("tar-gaps-inmet-", 
+                        begin_year, "-", 
+                        end_year, "-",
+                        period_thres, "yrs-",
+                        "south.rds")
+saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
+```
+
+
