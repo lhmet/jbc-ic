@@ -36,19 +36,23 @@
 ##' @references \url{http://rpubs.com/jdtatsch/mapa_tematico}
 ##' @examples 
 ##' #TO DO
-gg_bubble <- function(data = stat_site_j1
+gg_bubble <- function(data = info
                       ,type = c("gradient", "diverging")
-                      ,z = "BIAS"
-                      ,raster_bg = mdet_df
-                       ,limites = estados_sul_f
-                       ,colors_z = viridis::viridis
-                       ,colors_bg = gray.colors
-                       ,text_color = "red"
-                       ,text_size = 3
-                       ,z_legend = expression(VIÉS~~(degree~~C))
-                       ,color_fill = "burlywood3"
-                       ,point_size = 3
-                       ,...){
+                      ,z = "tavg"
+                      ,raster_bg = dem_sul_df
+                      ,limites = sul_df
+                      ,colors_z = viridis::viridis
+                      ,colors_bg = gray.colors
+                      ,text_color = "red"
+                      ,text_size = 3
+                      ,z_legend = expression(VIÉS~~(degree~~C))
+                      ,color_fill = "burlywood3"
+                      ,point_size = 3
+                      ,repel_seg_size = 0.5
+                      ,repel_min_seg_len = 0.5
+                      ,...){
+  
+  repel_min_seg_len <- unit(repel_min_seg_len, "lines")
   
   stopifnot(!missing(limites))
   stopifnot("site" %in% names(data))
@@ -80,9 +84,9 @@ gg_bubble <- function(data = stat_site_j1
                              y = lat, 
                              group = group)) 
     
-    }
+  }
   brks <- pretty(data[["z"]])
-    
+  
   # adiciona layers de pontos ao ggp_base
   ggp <- ggp_base + 
     ggplot2::theme_bw() +
@@ -110,17 +114,21 @@ gg_bubble <- function(data = stat_site_j1
                                     space = "Lab",
                                     breaks = brks)
   }
-
-    ggp <- ggp +
+  
+  ggp <- ggp +
     #ggplot2::geom_text(data = data, 
     ggrepel::geom_text_repel(data = data,
-                       aes(x = lon, 
-                           y = lat, 
-                           label = site), 
-                       fontface = "bold",
-                       #vjust = -1.4,
-                       col = text_color,
-                       size = text_size) +
+                             aes(x = lon, 
+                                 y = lat, 
+                                 label = site), 
+                             fontface = "bold",
+                             #vjust = -1.4,
+                             segment.size = repel_seg_size,
+                             #segment.colour = "black",
+                             # aumenta msl, diminui segmentos conectando labels (vice-versa)
+                             min.segment.length = repel_min_seg_len,
+                             col = text_color,
+                             size = text_size) +
     ggplot2::scale_y_continuous(breaks = scales::pretty_breaks(5),
                                 minor_breaks = scales::pretty_breaks(20),
                                 #expand = c(0, 0), 
