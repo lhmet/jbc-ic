@@ -54,16 +54,16 @@ function(x, max.length = Inf, internal.only = F, reverse = F)
 }
 
 
-longest_gap <- function(x){
+longest_gap <- function(x, ...){
   if (all(is.na(x))) return(0)
   # x <- filter(tar_data, site == "A807") %>% select(tair) %>% pull()
-  gp <- gaps(x)
+  gp <- gaps(x, ...)
   max(gp$length)
 }
 
-date_longest_gap <- function(temp, dates){
+date_longest_gap <- function(temp, dates, ...){
   # temp <- d$tair; dates <- d$date
-  gp <- gaps(temp)
+  gp <- gaps(temp, ...)
   #if (nrow(gp) == 1 && gp$length == 0) return(NA)
   if (nrow(gp) == 1 & all(gp$length == 0)) return(NA)
   
