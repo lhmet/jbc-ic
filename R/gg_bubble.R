@@ -85,7 +85,7 @@ gg_bubble <- function(data = info
                              group = group)) 
     
   }
-  brks <- pretty(data[["z"]])
+  brks <- pretty(data[["z"]], n = 6)
   
   # adiciona layers de pontos ao ggp_base
   ggp <- ggp_base + 
@@ -111,6 +111,7 @@ gg_bubble <- function(data = info
       ggplot2::scale_fill_gradientn(colors = colors_z(length(brks)),
                                     name = z_legend,
                                     guide = "colourbar",
+                                    #guide = "legend",
                                     space = "Lab",
                                     breaks = brks)
   }
