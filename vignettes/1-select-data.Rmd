@@ -310,15 +310,15 @@ Gráfico da disponibilidade de dados.
 
 ```{r plot-disp, fig.width=9.3, fig.height=7.25, fig.align='center' }
 estados <- readRDS("../data/estados_sul.rds")
-filter(tar_periods, site == "A825")
-gg_disp <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
-                     #data = tar_periods
-                     ,z = "period"
+filter(tar_gaps, site == "A825")
+gg_disp <- gg_bubble(#data =  filter(tar_gaps, site %in% sites_sel)
+                     data = tar_gaps
+                     ,z = "valid"
                      #,breaks = pretty(tar_periods$period, n = 6)
                      ,limites = estados
                      ,colors_z = viridis::viridis
                      ,color_fill = "burlywood3"
-                     ,z_legend = "Período (anos)"
+                     ,z_legend = "Dsiponibilidade (%)"
                      ,text_color = "gray30"
                      ,text_size = 3.8
                      ,point_size = 4
@@ -337,4 +337,14 @@ file_gaps <- paste0("tar-gaps-inmet-",
 saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
 ```
 
+
+```{r plots, fig.width=9.3, fig.height=7.25, fig.align='center' }
+cowplot::plot_grid(gg_periodo, 
+                   gg_disp,
+                   labels = c("(a)", "(b)"),
+                   vjust = 3,
+                   hjust = -3,
+                   align = "h", 
+                   label_size = 20)
+```
 
