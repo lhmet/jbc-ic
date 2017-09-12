@@ -5,8 +5,6 @@
 ##' (e.g. met. stations), political boundaries and raster (e.g. altitude, 
 ##' vegetation, etc)
 ##' @keywords hplot
-##' @importFrom base stopifnot missing names pretty if c length expression
-##' return
 ##' @importFrom ggplot2 ggplot geom_polygon geom_raster scale_fill_gradientn 
 ##' geom_path theme_bw coord_equal geom_point scale_x_continuous 
 ##' scale_y_continuous theme element_rect element_blank element_text aes
@@ -48,8 +46,10 @@ gg_bubble <- function(data = info
                       ,z_legend = expression(VIÉS~~(degree~~C))
                       ,color_fill = "burlywood3"
                       ,point_size = 3
+                      ,point_color = "black"
                       ,repel_seg_size = 0.5
                       ,repel_min_seg_len = 0.5
+                      ,guide_type = c("colourbar", "legend")
                       ,...){
   
   repel_min_seg_len <- unit(repel_min_seg_len, "lines")
@@ -97,7 +97,7 @@ gg_bubble <- function(data = info
                             fill = z), 
                         size = point_size,
                         shape = 21,
-                        colour = "black",
+                        colour = point_color,
                         show.legend = TRUE)
   
   if(type == "diverging"){
@@ -110,7 +110,8 @@ gg_bubble <- function(data = info
     ggp <- ggp + 
       ggplot2::scale_fill_gradientn(colors = colors_z(length(brks)),
                                     name = z_legend,
-                                    guide = "colourbar",
+                                    guide = guide_type,
+                                    #guide = guide_legend(reverse = TRUE),
                                     #guide = "legend",
                                     space = "Lab",
                                     breaks = brks)
@@ -143,12 +144,14 @@ gg_bubble <- function(data = info
     ggplot2::theme(plot.background = ggplot2::element_rect(fill = "transparent"),
                    panel.grid.major = ggplot2::element_blank(),
                    panel.grid.minor = ggplot2::element_blank(),
-                   axis.title.x = ggplot2::element_text(size = 16),
-                   axis.title.y = ggplot2::element_text(size = 16, angle = 90),
-                   axis.text.x = ggplot2::element_text(size = 14),
-                   axis.text.y = ggplot2::element_text(size = 14),
-                   #legend.position = "right",
-                   legend.title = ggplot2::element_text(size = 10),
+                   axis.title.x = ggplot2::element_text(size = 15),
+                   axis.title.y = ggplot2::element_text(size = 15, angle = 90),
+                   axis.text.x = ggplot2::element_text(size = 13),
+                   axis.text.y = ggplot2::element_text(size = 13),
+                   # Legend parameters: see ?guide_legend
+                   legend.title = ggplot2::element_text(size = 11),
+                   # para evitar sobreposição da área da legenda sobre o mapa
+                   legend.background = element_rect(fill = "transparent"),
                    ...
     )
   return(ggp)
