@@ -222,12 +222,22 @@ glimpse(tar_data_sel)
 Salvar dados selecionados pelos critérios de período mínimo de 4 anos e ano inicial 2008.
 
 ```{r}
+# dados
 file_data_sel <- paste0("tar-data-inmet-", 
                         begin_year, "-", 
                         end_year, "-",
                         period_thres, "yrs-",
                         "south.rds")
 saveRDS(tar_data_sel, file = file.path("../output", file_data_sel))
+# metadados
+file_info_sel <- paste0("tar-info-inmet-", 
+                        begin_year, "-", 
+                        end_year, "-",
+                        period_thres, "yrs-",
+                        "south.rds")
+tar_info_sel <- filter(tar_info, site %in% sites_sel)
+tar_info_sel
+saveRDS(tar_info_sel, file = file.path("../output", file_info_sel))
 ```
 
 
@@ -371,5 +381,19 @@ cowplot::plot_grid(gg_periodo,
                    align = "h", 
                    label_size = 20)
 ```
+
+# Arquivos gerados
+
+A partir dessa etapa devem-se usar os seguintes arquivos:
+
+- arquivo de metadados
+    
+    - `output/tar-info-inmet-fixed-south.rds`
+    
+- arquivo de dados meteorológicos
+
+    - `output/tar-data-inmet-2008-2016-4yrs-south.rds`
+    
+
 
 
