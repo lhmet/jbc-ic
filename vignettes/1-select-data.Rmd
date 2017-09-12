@@ -83,7 +83,8 @@ desativadas <- desativadas %>%
   mutate(lon = -53.0286111, lat = -24.18499999)
 tar_info <- bind_rows(tar_info_www, desativadas) %>%
   # fix station name
-  mutate(name = str_to_title(name))
+  mutate(name = str_to_title(name),
+         state = ordered(state, c("PR", "SC", "RS")))
 #DT::datatable(tail(tar_info))
 tail(tar_info)
 ```
