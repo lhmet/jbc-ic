@@ -47,9 +47,11 @@ gg_bubble <- function(data = info
                       ,color_fill = "burlywood3"
                       ,point_size = 3
                       ,point_color = "black"
+                      ,point_
                       ,repel_seg_size = 0.5
                       ,repel_min_seg_len = 0.5
                       ,guide_type = c("colourbar", "legend")
+                      ,point_text_ff = "plain" # font face labels points
                       ,...){
   
   repel_min_seg_len <- unit(repel_min_seg_len, "lines")
@@ -123,7 +125,7 @@ gg_bubble <- function(data = info
                              aes(x = lon, 
                                  y = lat, 
                                  label = site), 
-                             fontface = "bold",
+                             fontface = point_text_ff,
                              #vjust = -1.4,
                              segment.size = repel_seg_size,
                              #segment.colour = "black",
