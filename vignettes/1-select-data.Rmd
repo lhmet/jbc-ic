@@ -238,7 +238,7 @@ gg_periodo <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
                      ,text_color = "gray30"
                      ,point_color = "transparent"
                      ,text_size = 2.6
-                     ,point_size = 2.5
+                     ,point_size = 3
                      ,repel_min_seg_len = 2,
                      ,legend.justification = c(0,1) 
                      ,legend.position = c(0.01, 0.99)
@@ -246,36 +246,25 @@ gg_periodo <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
 gg_periodo
 ```
 
-# Disponibilidade de dados
-
-```{r , include = FALSE}
-safe_dlg <- safely(date_longest_gap)
-# investigando problema no gaps
-sites <- unique(tar_data_pad_inf$site)
-gp <- plyr::llply(sites, 
-            function(isite){
-              cat(isite, "\n")
-              x <- filter(tar_data_pad_inf, site == isite)
-              #gaps(x$tair)
-              #date_longest_gap(x$tair, x$date)
-              safe_dlg(x$tair, x$date)
-            })
-# EMA sem falhas
-d <-  filter(tar_data_pad_inf, site == sites[87]) #%>% View()
-  #timePlot(d, "tair", date.format = "%b-%d\n%Y")
-gaps(d$tair)
-# EMA com falhas no início
-d <-  filter(tar_data_pad_inf, site == sites[86]) #%>% View()
-gaps(d$tair)
-# problema de warnings
-# the condition has length > 1 and only the first element will be used
-d <-  filter(tar_data_pad_inf, site == "A818") #%>% View()
-gaps(d$tair)
-longest_gap(d$tair)
-date_longest_gap(d$tair,d$date)
+```{r}
+ggplot(tar_periods, 
+       aes(x = round(period))) + 
+  #geom_histogram(aes(y = ..count../sum(..count..)), stat = "count") + 
+  geom_histogram(stat = "count", aes(fill = state)) +
+  #viridis::scale_fill_viridis(discrete=TRUE, option = "inferno") +
+  scale_fill_grey() +
+  #scale_y_continuous(labels = scales::percent,
+  #                   sec.axis = sec_axis(~. * sum(.))) + 
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 15), 
+                     expand = c(0, 0)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 12), 
+                     expand = c(0.05, 0.05)) +
+  labs(x = "Período (anos)", y = "Nº de EMAs") +
+  theme_bw()
 ```
 
 
+# Disponibilidade de dados
 
 ```{r}
 tar_gaps <- tar_data_sel %>%
@@ -308,7 +297,17 @@ tar_gaps <- tar_gaps %>%
 tar_gaps
 ```
 
-Gráfico da disponibilidade de dados.
+
+```{r}
+file_gaps <- paste0("tar-gaps-inmet-", 
+                        begin_year, "-", 
+                        end_year, "-",
+                        period_thres, "yrs-",
+                        "south.rds")
+saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
+```
+
+**Gráficos da disponibilidade de dados.**
 
 ```{r plot-disp, fig.width=9.3, fig.height=7.25, fig.align='center' }
 estados <- readRDS("../data/estados_sul.rds")
@@ -324,7 +323,7 @@ gg_disp <- gg_bubble(#data =  filter(tar_gaps, site %in% sites_sel)
                      ,text_color = "gray30"
                      ,point_color = "transparent"
                      ,text_size = 2.6
-                     ,point_size = 2.5
+                     ,point_size = 3
                      ,repel_min_seg_len = 2,
                      ,legend.justification = c(0,1) 
                      ,legend.position = c(0.01, 0.99)
@@ -333,17 +332,26 @@ gg_disp <- gg_bubble(#data =  filter(tar_gaps, site %in% sites_sel)
 gg_disp
 ```
 
+
 ```{r}
-file_gaps <- paste0("tar-gaps-inmet-", 
-                        begin_year, "-", 
-                        end_year, "-",
-                        period_thres, "yrs-",
-                        "south.rds")
-saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
+ggplot(tar_gaps, 
+       aes(x = round(missing))) + 
+  #geom_histogram(aes(y = ..count../sum(..count..)), stat = "count") + 
+  geom_histogram(stat = "count", aes(fill = state)) +
+  #viridis::scale_fill_viridis(discrete=TRUE, option = "inferno") +
+  scale_fill_grey() +
+  #scale_y_continuous(labels = scales::percent,
+  #                   sec.axis = sec_axis(~. * sum(.))) + 
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10), 
+                     expand = c(0, 0)) +
+  labs(x = "Dados faltantes (%)", y = "Nº de EMAs") +
+  theme_bw()
 ```
 
 
-```{r plots, fig.width=9.3, fig.height=7.25, fig.align='center' }
+
+
+```{r plots1, fig.width=9.3, fig.height=7.25, fig.align='center' }
 cowplot::plot_grid(gg_periodo, 
                    gg_disp,
                    labels = c("(a)", "(b)"),
@@ -352,4 +360,5 @@ cowplot::plot_grid(gg_periodo,
                    align = "h", 
                    label_size = 20)
 ```
+
 
