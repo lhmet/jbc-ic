@@ -236,11 +236,13 @@ gg_periodo <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
                      ,color_fill = "burlywood3"
                      ,z_legend = "Período (anos)"
                      ,text_color = "gray30"
-                     ,text_size = 3.8
-                     ,point_size = 4
+                     ,point_color = "transparent"
+                     ,text_size = 2.6
+                     ,point_size = 2.5
                      ,repel_min_seg_len = 2,
                      ,legend.justification = c(0,1) 
-                     ,legend.position = c(0.01, 0.99)) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "legend") 
 gg_periodo
 ```
 
@@ -318,13 +320,16 @@ gg_disp <- gg_bubble(#data =  filter(tar_gaps, site %in% sites_sel)
                      ,limites = estados
                      ,colors_z = viridis::viridis
                      ,color_fill = "burlywood3"
-                     ,z_legend = "Dsiponibilidade (%)"
+                     ,z_legend = "Disponibilidade (%)"
                      ,text_color = "gray30"
-                     ,text_size = 3.8
-                     ,point_size = 4
+                     ,point_color = "transparent"
+                     ,text_size = 2.6
+                     ,point_size = 2.5
                      ,repel_min_seg_len = 2,
                      ,legend.justification = c(0,1) 
-                     ,legend.position = c(0.01, 0.99)) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "legend"
+                     ) 
 gg_disp
 ```
 
@@ -342,8 +347,8 @@ saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
 cowplot::plot_grid(gg_periodo, 
                    gg_disp,
                    labels = c("(a)", "(b)"),
-                   vjust = 3,
-                   hjust = -3,
+                   vjust = 4.8,
+                   hjust = -7.25,
                    align = "h", 
                    label_size = 20)
 ```
