@@ -89,6 +89,16 @@ tar_info <- bind_rows(tar_info_www, desativadas) %>%
 tail(tar_info)
 ```
 
+Metadados do INMET corrigidos e atualizados. 
+
+```{r}
+# tar_info com coordenadas atualizadas do site do inmet
+# e com a correção das coords da ema desativada
+file_info_new <- paste0("tar-info-inmet-fixed-","south.rds")
+saveRDS(tar_info, file = file.path("../output", file_info_new))
+```
+
+
 ## Dados meteorológicos
 
 ```{r}
