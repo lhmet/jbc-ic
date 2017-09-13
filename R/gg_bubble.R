@@ -38,6 +38,7 @@ gg_bubble <- function(data = info
                       ,type = c("gradient", "diverging")
                       ,z = "tavg"
                       ,raster_bg = dem_sul_df
+                      ,breaks = pretty(data[["z"]], n = 6)
                       ,limites = sul_df
                       ,colors_z = viridis::viridis
                       ,colors_bg = gray.colors
@@ -87,7 +88,8 @@ gg_bubble <- function(data = info
                              group = group)) 
     
   }
-  brks <- pretty(data[["z"]], n = 6)
+  if(missing(breaks)) brks <- pretty(data[["z"]]) else brks <- breaks
+  #brks <- pretty(data[["z"]], n = 6)
   
   # adiciona layers de pontos ao ggp_base
   ggp <- ggp_base + 
