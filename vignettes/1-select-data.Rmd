@@ -382,13 +382,12 @@ cowplot::plot_grid(gg_periodo,
                    label_size = 20)
 ```
 
-# Arquivos gerados
+# Arquivos gerados para análises futuras
 
-A partir dessa etapa devem-se usar os seguintes arquivos:
 
 - arquivo de metadados
     
-    - `output/tar-info-inmet-fixed-south.rds`
+    - `output/tar-info-inmet-2008-2016-4yrs-south.rds`
     
 - arquivo de dados meteorológicos
 
