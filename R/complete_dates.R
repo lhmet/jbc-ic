@@ -4,7 +4,7 @@ complete_dates <- function(x, group = "site", time_step = "hours"){
   xDT <- data.table::data.table(x, key = c("date", group))
   rm(x)
   if(anyDuplicated(xDT) > 0){
-    message(dup_rows, 
+    message( 
             " duplicated dates:", 
             " keeping the first data record.")
   }

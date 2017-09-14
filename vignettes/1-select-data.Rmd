@@ -61,42 +61,9 @@ Sys.setenv(TZ = "UTC")
 Informações como as coordenadas de localização, altitude, nome e código das EMAs foram extraídas do cabeçalho contido no arquivo excel com os dados de cada EMA. Entretanto, notou-se que em alguns casos houve erro de digitação das coordenadas quando comparadas aquelas disponíveis no site do INMET.
 
 ```{r chunk4}
-# metadados baseados no cabeçalho dos arquivos xls
-tar_info_files <- readRDS("../data/info_inmet_sul_2000_2016.rds")
-nrow(tar_info_files)
-filter(tar_info_files, site == "A825")
-#tar_info1
-names(tar_info_files)
-# metadados baseados no site do inmet (ver "..R/update_aws_info_sul.R")
-tar_info_www <- readRDS("../output/tar-info-inmet-update-south.rds") %>%
-   select(-url, -start) %>%
-   rename("site" = id, 
-          "name" = city)
-#tar_info_site
-names(tar_info_www)
-# Estação desativada?
-desativadas <- filter(tar_info_files, !site %in% tar_info_www$site)
-desativadas
-# substituição das coordenadas por valores mais precisos 
-# http://www.unidata.ucar.edu/mailing_lists/archives/idd-brasil/2009/msg00075.html
-# http://www.dca.ufcg.edu.br/posgrad_met/dissertacoes/WagnerdeAragaoBezerra_2013.pdf
-desativadas <- desativadas %>%
-  mutate(lon = -53.0286111, lat = -24.18499999)
-tar_info <- bind_rows(tar_info_www, desativadas) %>%
-  # fix station name
-  mutate(name = str_to_title(name),
-         state = ordered(state, levels = c("PR", "SC", "RS")))
-#DT::datatable(tail(tar_info))
-tail(tar_info)
-```
-
-Metadados do INMET corrigidos e atualizados. 
-
-```{r}
-# tar_info com coordenadas atualizadas do site do inmet
-# e com a correção das coords da ema desativada
-file_info_new <- paste0("tar-info-inmet-fixed-","south.rds")
-saveRDS(tar_info, file = file.path("../output", file_info_new))
+# metadados do INMET corrigidos e atualizados.(see R/aws-inmet-metadata.R)
+tar_info <- readRDS("../data/info-inmet-sul.rds")
+  tar_info
 ```
 
 
@@ -104,15 +71,11 @@ saveRDS(tar_info, file = file.path("../output", file_info_new))
 
 ```{r}
 # carregar dados meteorológicos das EMA
-tar_data <- readRDS("../data/dataSel_inmet_sul_localtime.rds")
+tar_data <- readRDS("../data/data-raw-inmet-sul-20000922-20161231.rds") %>%
+  select(site:tair, tmin, tmax, prec, p, rg)
 glimpse(tar_data)
-#"A825" %in% unique(tar_data$site) 
-
+#"A825" %in% unique(tar_data$site)
 ```
-
-
-
-
 
 
 # Dados temporalmente consistentes
@@ -129,12 +92,18 @@ time_step
 nrow(tar_data)
 ```
 
+```{r, include = FALSE}
+nrow(tar_data)
+nrow(distinct(tar_data))
+```
 
 
 ```{r}
+# cada site com um perído de dados diferente
 table(tar_data$site)
 #microbenchmark::microbenchmark(
 tar_data_pad <- tar_data %>%
+  filter(!is.na(date)) %>%
    ## pad é muito lento
    # pad(interval = time_step, 
    #     group = "site", 
@@ -147,7 +116,7 @@ tar_data_pad <- tar_data %>%
 nrow(tar_data_pad)
 # verificaçao da padronizaçao temporal
 table(tar_data_pad$site)
-range(tar_data_pad2$date)
+#range(tar_data_pad2$date)
 ```
 
 ```{r, include=FALSE}
@@ -354,7 +323,7 @@ file_gaps <- paste0("tar-gaps-inmet-",
                         end_year, "-",
                         period_thres, "yrs-",
                         "south.rds")
-saveRDS(tar_data_sel, file = file.path("../output", file_gaps))
+saveRDS(tar_gaps, file = file.path("../output", file_gaps))
 ```
 
 
