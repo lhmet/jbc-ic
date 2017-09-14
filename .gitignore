@@ -4,3 +4,4 @@
 .Ruserdata
 output/*.rds
 data/*.rds
+.html
