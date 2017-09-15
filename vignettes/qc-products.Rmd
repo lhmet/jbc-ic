@@ -1,0 +1,163 @@
+---
+title: "Produtos dos Testes de QC"
+author: "Jônatan Tatsch"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: no
+  html_document:
+    fig_caption: yes
+    fig_width: 6
+    keep_md: yes
+    number_sections: yes
+    toc: no
+
+---
+
+# Pacotes, funções e pré-configurações
+
+Carregando pacotes necessários.
+
+```{r setup, message=FALSE}
+# limpa espaço de trabalho
+rm(list = ls()) 
+# carrega pacotes necessários
+pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr", 
+             "magrittr", "padr", "kableExtra")
+easypackages::libraries(pacotes)
+source("../R/crv_detect.R")
+Sys.setenv(TZ = "UTC")
+#options(knitr.table.format = "html")
+```
+
+# Dados 
+
+Exemplo de dados fictícios.
+
+```{r}
+# Exemplo qc1, i = 1, teste de repetição consecutiva de valores 
+exdata <- data_frame(site = "A800", 
+                     date = seq(as.POSIXct("2000-01-01 00:00:00"),
+                                length.out = 20,
+                                by = "hour"), 
+                     tar = c(20.6, NA, 22, 22, 22, 23.1, 14.7, 17.7, 25.4, 19.6, 23.4, 24, 
+24, 21.3, NA, NA, 26, 26, 26, 26))
+DT::datatable(exdata, options =list(pageLength=20,dom = 't'))
+```
+
+
+# Produtos de cada QC 
+
+A aplicação de cada QC produzirá os seguintes produtos padronizados:
+
+## Produto 1
+
+ **Conjunto de dados original com uma nova coluna que corresponde ao rótulo identificador do QC (variável $qc_{i}$, onde $i=1,..,n$, $n =$ nº de testes de controle de qualidade)**
+    
+  - $qc_{i}=1$, dado não aprovado no teste $i$ (dado suspeito)
+  
+  - $qc_{i}=0$, dado aprovado no teste $i$
+
+Exemplo
+
+```{r}
+options(tibble.print_max = Inf)
+# identificador do qc
+id_qc <- 1
+# Exemplo qc2, i = 2, teste de repetição consecutiva de valores 
+exdata_qc <- mutate(exdata,
+                    qc = id_qc,
+                    suspect = as.integer(crv_detect(x = tar, 
+                                                   thresh = -99,
+                                                   min.steps = 2)
+                     )
+)
+#kableExtra::kable_styling(kable(exdata))
+DT::datatable(exdata_qc, options = list(pageLength=20,dom = 't'))
+```
+
+```{r}
+prod1_file <- str_replace("../output/exdata-qcID.rds", "ID",as.character(id_qc))
+prod1_file
+```
+
+
+```{r, eval = FALSE}
+saveRDS(exdata_qc, file = prod1_file)
+```
+
+
+## Produto 2
+
+**Tabela com código da EMA, identificador do teste de QC (ex. qc = 1), n° de observações suspeitas (n), data inicial (start) e data final (end) do evento.**
+
+
+```{r, echo =FALSE}
+meta_qc <- mutate(exdata_qc, 
+                  id_suspect = crv_detect(x = tar, thresh = -99, min.steps = 2, numerate = TRUE)) %>%
+  filter(!is.na(id_suspect)) %>%
+  group_by(id_suspect) %>%
+  summarise(site = first(site),
+            qc = first(qc),
+            n = n(),
+            start = min(date), 
+            end = max(date),
+            value = unique(tar))
+DT::datatable(meta_qc, options = list(dom = 't'))
+```
+
+```{r, echo = FALSE}
+cat("\n")
+```
+
+#
+A coluna adicional com a variável `value` foi adicionada porque é útil saber qual o valor que está se repetindo num dado evento formado por valores consecutivos repetidos. Essa variável é necessária neste tipo de QC mas pode ser opcional, dependendo do `qc` aplicado.
+
+```{r}
+prod2_file <- str_replace("../output/exdata-qcID-metadata.rds", "ID", as.character(id_qc))
+prod2_file
+```
+
+```{r, eval = FALSE}
+saveRDS(exdata_qc1, file = prod2_file)
+```
+
+## Produto 3
+
+Tabela resumo do numéro de casos suspeitos pelo `qc` aplicado e a porcentagem.
+
+```{r, echo = FALSE}
+summary_qc <- summarise(meta_qc, 
+                        site = first(site),
+                        qc = first(qc),
+                        tot = sum(n),
+                        perc = tot/nrow(exdata_qc) * 100)
+DT::datatable(summary_qc, options = list(dom = 't'))
+```
+
+```{r}
+prod3_file <- str_replace("../output/exdata-qcID-summary.rds", "ID", as.character(id_qc))
+prod3_file
+```
+
+```{r}
+saveRDS(summary_qc, file = prod3_file)
+```
+
+# Arquivos e finalidades
+
+- arquivo do Produto 1
+
+    - `r prod1_file`
+        - *arquivo que poderá ser usado na verificação dos dados suspeitos por visualização das séries temporais*
+        
+
+- arquivo do Produto 2
+
+    - `r prod2_file`
+        - *arquivo auxiliar para determinar estatísticas sobre os eventos detectados pelo QC, como por exemplo, qual o evento mais longo e a data de sua ocorrência; qual época do ano com mais dados suspeitos.*
+
+- arquivo do Produto 3
+
+    - `r prod3_file`
+        - *arquivo útil para visualização espacial da distribuição da frequência de ocorrência de dados suspeitos.*
