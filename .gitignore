@@ -5,3 +5,4 @@
 output/*.rds
 data/*.rds
 .html
+.dropbox
