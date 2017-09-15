@@ -35,10 +35,6 @@ Sys.setenv(TZ = "UTC")
 Exemplo de dados fictícios.
 
 ```{r}
-x <- round(runif(20, 12, 34),1)
-x[10:12] <- 22.2
-x
-dput(x)
 # Exemplo qc1, i = 1, teste de repetição consecutiva de valores 
 exdata <- data_frame(site = c(rep("A800", 20), rep("A900", 20)),
                      date = c(seq(as.POSIXct("2000-01-01 00:00:00"),
