@@ -18,17 +18,17 @@ output:
 
 Cada teste de controle de qualidade (QC) será referenciado por um número, conforme abaixo:
 
-- `qc1`: teste de amplitude variação 
+- `qc1` teste de amplitude variação 
 
-    - baseado em limites estabelecidos pelo intervalo de medida instrumental
+    - `qc1a` baseado em limites estabelecidos pelo intervalo de medida instrumental
     
-    - baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
+    - `qc1b` baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
 
-- `qc3`: teste de persistência temporal (valores consecutivos repetidos) 
+- `qc2` teste de persistência temporal (valores consecutivos repetidos) 
 
-- `qc4`: teste de cosistência interna
+- `qc3` teste de cosistência interna
 
-- `qc5`: teste consistência temporal (taxa de variação horária)
+- `qc4` teste consistência temporal (taxa de variação horária)
 
 
 # Especificação dos sensores das EMAs do INMET.
