@@ -1,5 +1,5 @@
 ---
-title: "Aplicaçao do qc3"
+title: "Aplicaçao do teste de controle de qualidade 3"
 author: "Jônatan Tatsch"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -35,8 +35,6 @@ Sys.setenv(TZ = "UTC")
 
 # Dados 
 
-## Metadados
-
 ```{r}
 # metadados do INMET corrigidos e atualizados.(see R/aws-inmet-metadata.R)
 tar_info <- readRDS("../output/tar-info-inmet-2008-2016-4yrs-south.rds")
@@ -46,26 +44,11 @@ tar_data <- readRDS("../output/tar-data-inmet-2008-2016-4yrs-south.rds")
 tar_data
 ```
 
-# Produtos de cada QC 
-
-A aplicação de cada QC produzirá os seguintes produtos padronizados:
 
 ## Produto 1
 
 ```{r, eval = FALSE}
-options(tibble.print_max = Inf)
-# identificador do qc
-id_qc <- 1
-# Exemplo qc2, i = 2, teste de repetição consecutiva de valores 
-exdata_qc <- mutate(exdata,
-                    qc = id_qc,
-                    suspect = as.integer(crv_detect(x = tar, 
-                                                   thresh = -99,
-                                                   min.steps = 2)
-                     )
-)
-#kableExtra::kable_styling(kable(exdata))
-DT::datatable(exdata_qc, options = list(pageLength = 40,dom = 't'))
+# 
 ```
 
 ```{r, eval = FALSE}
