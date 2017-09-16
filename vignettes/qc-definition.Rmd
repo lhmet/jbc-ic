@@ -1,0 +1,42 @@
+---
+title: "Definições dos Testes de QC"
+author: "Jônatan Tatsch"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: no
+  html_document:
+    fig_caption: yes
+    fig_width: 6
+    keep_md: yes
+    number_sections: yes
+    toc: no
+
+---
+
+# Convencões dos testes de controle de qualidade
+
+Cada teste de controle de qualidade (QC) será referenciado por um número, conforme abaixo:
+
+- `qc1`: teste de amplitude variação 
+
+    - baseado em limites estabelecidos pelo intervalo de medida instrumental
+    
+    - baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
+
+- `qc3`: teste de persistência temporal (valores consecutivos repetidos) 
+
+- `qc4`: teste de cosistência interna
+
+- `qc5`: teste consistência temporal (taxa de variação horária)
+
+
+# Especificação dos sensores das EMAs do INMET.
+
+| Variável               | Sensor     | Acurácia                                | Intervalo de medida | resolução    | altura acima do solo |
+|------------------------|------------|-----------------------------------------|---------------------|--------------|----------------------|
+| Temperatura do ar      | Pt100      | $\pm0,08$                               | -50/60°C            | 0,1°C ?      | 2 m                  |
+| Umidade relativa do ar | Humicap180 | $\pm2\%$ (0/90 %), $\pm3\%$ (90/100%)  | 0,8/100 \%          | 0,1% ?       | 2 m                  |
+| Precipitação           | QMR102     | < 24 mm/h ($\pm 1\%$), < 120 mm/h ($\pm5\%$) | 0/120 mm/h          | 0,2mm /pulso | 1,5 m                |
+
+
