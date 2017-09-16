@@ -38,7 +38,7 @@ Sys.setenv(TZ = "UTC")
 ```{r}
 # metadados do INMET corrigidos e atualizados.(see R/aws-inmet-metadata.R)
 tar_info <- readRDS("../output/tar-info-inmet-2008-2016-4yrs-south.rds")
-  tar_info
+tar_info
 # dados
 tar_data <- readRDS("../output/tar-data-inmet-2008-2016-4yrs-south.rds")
 tar_data
