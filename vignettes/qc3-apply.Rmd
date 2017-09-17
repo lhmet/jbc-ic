@@ -1,5 +1,5 @@
 ---
-title: "Aplicaçao do teste de controle de qualidade 3"
+title: "Aplicaçao do teste de controle de qualidade 2"
 author: "Jônatan Tatsch"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
