@@ -47,11 +47,22 @@ tar_data
 
 ## Produto 1
 
-```{r, eval = FALSE}
-# 
+```{r}
+# identificador do qc
+id_qc <- 3
+# Exemplo qc2, i = 2, teste de repetição consecutiva de valores 
+exdata_qc <- mutate(exdata,
+                    qc = id_qc,
+                    suspect = as.integer(crv_detect(x = tar, 
+                                                   thresh = -99,
+                                                   min.steps = 2)
+                     )
+)
+#kableExtra::kable_styling(kable(exdata))
+DT::datatable(exdata_qc, options = list(pageLength = 40,dom = 't'))
 ```
 
-```{r, eval = FALSE}
+```{r}
 prod1_file <- str_replace("../output/exdata-qcID.rds", "ID",as.character(id_qc))
 prod1_file
 ```
