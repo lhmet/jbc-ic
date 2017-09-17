@@ -7,6 +7,8 @@ Repositório para organização do material auxiliar para iniciação científic
 - [x] Selecionar período de dados das EMAs
     - rodar `1-select-data.Rmd`
 
-- [ ] gerar mapa espacial das estatísticasbásicas das EMAs
+- [ ] ver as convenções dos testes de QC (`vignettes/qc-definition.Rmd`)
 
-- [ ] próxima tarefa
+- [ ] ver os produtos esperados para cada teste de QC (`vignettes/qc-products.Rmd`)
+
+- [ ] gerar os produtos de cada QC
