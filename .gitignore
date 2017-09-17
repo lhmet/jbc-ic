@@ -7,3 +7,4 @@ data/*.rds
 vignettes/*.html
 .dropbox
 jonas
+references
