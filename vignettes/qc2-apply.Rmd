@@ -234,22 +234,6 @@ gg_tot_qc2
 
 ```
 
-```{r, fig.height=14, fig.asp=1.2}
-sites_o <- summary_qc_j$site[order(summary_qc_j$tot)]
-sites_o
-data_bar_qc2 <- summary_qc_j %>%
-  mutate(site = ordered(site, levels = sites_o))
-data_bar_qc2
-ggp_tot_qc2 <- ggplot(data = data_bar_qc2) +
-  geom_bar(aes(x = site, y = tot),
-  #geom_bar(aes(x = site, y = perc),
-           stat = "identity",
-           width = 0.8) +
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 20), expand = c(0.01,0)) +
-  coord_flip() 
-ggp_tot_qc2
-# fazer gráfico com num de casos por mês (evolução temporal)
-```
 
 ### % de observações suspeitas acima de um n° de horas repetidas consecutivas
 
@@ -415,16 +399,46 @@ ggp_qc2_hist_split
 ## Visão geral da distribuição das observações suspeitas (produto 1) no tempo e nas EMAs
 
 ```{r, fig.height=14, fig.asp=1.2}
-ggp_wide_view <- ggplot(data = tar_data_qc,
+sites_o <- summary_qc_j$site[order(summary_qc_j$tot)]
+sites_o
+data_image <- tar_data_qc %>%
+  mutate(site = ordered(site, levels = sites_o))
+ggp_image <- ggplot(data = data_image,
                         aes(x = date, y = site)) +
   geom_point(aes(colour = factor(suspect)), shape = 15, size = 2.6) + 
   labs(x = "Ano", y = "EMA") +
-  scale_x_datetime(expand = c(0, 0)) +
+  scale_x_datetime(expand = c(0, 0), date_breaks = "1 year", date_labels = "%Y") +
     scale_colour_manual("rótulo",
                          values = c("1" = "black", 
                                     "0" = "snow")) +
   theme_bw() +
   theme(text = element_text(size=10)
         ) #+ guides()
-ggp_wide_view
+ggp_image
+```
+
+
+### Número de observações suspeitas por EMA
+
+```{r, fig.height=14, fig.asp=1.2}
+#meta_qc
+data_bar_qc2 <- summary_qc_j %>% 
+  #right_join(., select(meta_qc, site, value), by = "site") %>%
+  mutate(site = ordered(site, levels = sites_o)) 
+data_bar_qc2
+ggp_tot_qc2 <- ggplot(data = data_bar_qc2) +
+  geom_bar(aes(x = site, y = tot
+               #, fill = value
+               ),
+  #geom_bar(aes(x = site, y = perc),
+           stat = "identity",
+           width = 0.8) +
+  
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10), 
+                     expand = c(0.01,0)
+                     #, labels = point
+                     ) +
+  coord_flip() 
+ggp_tot_qc2
+# fazer gráfico com num de casos por mês (evolução temporal)
 ```
