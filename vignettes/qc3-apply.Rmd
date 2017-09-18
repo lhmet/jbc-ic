@@ -1,0 +1,145 @@
+---
+title: "Aplicaçao do teste de controle de qualidade 3"
+author: "Jônatan Tatsch"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: no
+  html_document:
+    fig_caption: yes
+    fig_width: 6
+    keep_md: yes
+    number_sections: yes
+    toc: no
+
+---
+
+# Pre-requisitos
+
+
+```{r setup, message=FALSE}
+# clean-up
+rm(list = ls()) 
+# pacotes
+pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr", 
+             "magrittr", "kableExtra")
+easypackages::libraries(pacotes)
+# scripts 
+source("../R/crv_detect.R")
+source("../R/utils.R")
+source("../R/gg_bubble.R")
+source("../R/expected_rows.R")
+Sys.setenv(TZ = "UTC")
+#options(knitr.table.format = "html")
+```
+
+# Dados 
+
+```{r}
+# metadados do INMET corrigidos e atualizados.(see R/aws-inmet-metadata.R)
+tar_info <- readRDS("../output/tar-info-inmet-2008-2016-4yrs-south.rds")
+tar_info
+# dados
+tar_data <- readRDS("../output/tar-data-inmet-2008-2016-4yrs-south.rds")
+tar_data
+```
+
+
+## Produto 1
+
+```{r}
+# identificador do qc
+id_qc <- 3
+# Exemplo qc2, i = 2, teste de repetição consecutiva de valores 
+exdata_qc <- mutate(exdata,
+                    qc = id_qc,
+                    suspect = as.integer(crv_detect(x = tar, 
+                                                   thresh = -99,
+                                                   min.steps = 2)
+                     )
+)
+#kableExtra::kable_styling(kable(exdata))
+DT::datatable(exdata_qc, options = list(pageLength = 40,dom = 't'))
+```
+
+```{r}
+prod1_file <- str_replace("../output/exdata-qcID.rds", "ID",as.character(id_qc))
+prod1_file
+```
+
+
+```{r, eval = FALSE}
+saveRDS(exdata_qc, file = prod1_file)
+```
+
+
+## Produto 2
+
+
+
+```{r, eval = FALSE}
+meta_qc <- mutate(exdata_qc, 
+                  # identificador de cada evento
+                  id = crv_detect(x = tar, thresh = -99, min.steps = 2, numerate = TRUE)) %>%
+  filter(!is.na(id)) %>%
+  group_by(id) %>%
+  summarise(site = first(site),
+            qc = first(qc),
+            n = n(),
+            start = min(date), 
+            end = max(date),
+            value = unique(tar)) %>%
+  select(site:value, id)
+DT::datatable(meta_qc, options = list( dom = 't'))
+```
+
+
+
+#
+A coluna adicional com a variável `value` foi adicionada porque é útil saber qual o valor que está se repetindo num dado evento formado por valores consecutivos repetidos. Essa variável é necessária neste tipo de QC mas pode ser opcional, dependendo do `qc` aplicado.
+
+```{r, eval = FALSE}
+prod2_file <- str_replace("../output/exdata-qcID-metadata.rds", "ID", as.character(id_qc))
+prod2_file
+```
+
+```{r, eval = FALSE}
+saveRDS(exdata_qc1, file = prod2_file)
+```
+
+## Produto 3
+
+Tabela resumo do numéro de casos suspeitos pelo `qc` aplicado e a porcentagem.
+
+```{r, eval = FALSE}
+summary_qc <- meta_qc %>%
+  group_by(site) %>%
+  summarise(qc = first(qc),
+            tot = sum(n),
+            perc = tot/nrow(exdata_qc) * 100)
+DT::datatable(summary_qc, options = list(dom = 't'))
+```
+
+```{r, eval = FALSE}
+prod3_file <- str_replace("../output/exdata-qcID-summary.rds", "ID", as.character(id_qc))
+prod3_file
+```
+
+```{r, eval = FALSE}
+saveRDS(summary_qc, file = prod3_file)
+```
+
+# Arquivos gerados
+
+- arquivo do Produto 1
+
+    - ` prod1_file`
+
+- arquivo do Produto 2
+
+    - ` prod2_file`
+
+- arquivo do Produto 3
+
+    - ` prod3_file`
+       
