@@ -127,7 +127,7 @@ prod2_file
 ```
 
 ```{r, eval = FALSE}
-saveRDS(exdata_qc1, file = prod2_file)
+saveRDS(meta_qc, file = prod2_file)
 ```
 
 ## Produto 3

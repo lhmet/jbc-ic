@@ -1,5 +1,5 @@
 ---
-title: "Aplicaçao do teste de controle de qualidade 2"
+title: "Controle de qualidade 2 - Persistência temporal"
 author: "Jônatan Tatsch"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -14,7 +14,9 @@ output:
 
 ---
 
-# Pre-requisitos
+>QC2 - Teste de persistência temporal
+
+# Pré-requisitos
 
 
 ```{r setup, message=FALSE}
@@ -39,89 +41,146 @@ Sys.setenv(TZ = "UTC")
 # metadados do INMET corrigidos e atualizados.(see R/aws-inmet-metadata.R)
 tar_info <- readRDS("../output/tar-info-inmet-2008-2016-4yrs-south.rds")
 tar_info
+
 # dados
-tar_data <- readRDS("../output/tar-data-inmet-2008-2016-4yrs-south.rds")
+data_file <- "../output/tar-data-inmet-2008-2016-4yrs-south.rds"
+# prefixo para nome dos arquivos derivados desta etapa
+prefix <- str_split(basename(data_file), "\\.") %>%
+  unlist() %>%
+  extract(1)
+# importa dados
+tar_data <- readRDS(data_file) %>%
+  # só requer dados de tair
+  select(date, site, tair) %>%
+  arrange(site)
 tar_data
 ```
 
 
 ## Produto 1
 
+Conjunto de dados original com uma nova coluna nomeada como $varname\_qc_{i}$. $varname$ é o nome da variável a qual está sendo aplicado o teste de QC. $i$ é o número identificador do teste de QC e pode variar de $i=1,..,n$, onde $n$ é o nº de testes de QC.
+
+A convenção dos identificadores de QC é definida em `vignettes/qc-definition.Rmd`. 
+
+Neste caso a variável usada como rótulo identificador de dado suspeito será composto pela variável `tair` (temperatura do ar) e o identificador correspondente ao **teste de persistência temporal** (`qc2`). A nova variável adicionada ao conjunto de dados original será nomeada `tair_qc2` que assumirá os valores 
+
+  - `tair_qc2 = 1`, dado não aprovado no teste `qc2`, portanto é classificado como uma observação de `tair` **suspeita**
+  
+  - `tair_qc2 = 0`, dado aprovado no teste `qc2`
+  
 ```{r}
 # identificador do qc
-id_qc <- 3
-# Exemplo qc2, i = 2, teste de repetição consecutiva de valores 
-exdata_qc <- mutate(exdata,
-                    qc = id_qc,
-                    suspect = as.integer(crv_detect(x = tar, 
-                                                   thresh = -99,
-                                                   min.steps = 2)
-                     )
-)
-#kableExtra::kable_styling(kable(exdata))
-DT::datatable(exdata_qc, options = list(pageLength = 40,dom = 't'))
+id_qc <- 2
+# qc2, i = 2, teste de repetição consecutiva de valores 
+tar_data_qc <- tar_data %>%
+  group_by(site) %>%
+  mutate(qc = id_qc,
+         suspect = as.integer(crv_detect(x = tair, 
+                                         thresh = -99,
+                                         min.steps = 2))
+         ) %>%
+  ungroup()
+tar_data_qc
+nrow(tar_data) == nrow(tar_data_qc)
 ```
 
 ```{r}
-prod1_file <- str_replace("../output/exdata-qcID.rds", "ID",as.character(id_qc))
+prod1_file_name <- "../output/PREFIX-qcID.rds"
+prod1_file <- prod1_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
 prod1_file
 ```
 
 
 ```{r, eval = FALSE}
-saveRDS(exdata_qc, file = prod1_file)
+saveRDS(tar_data_qc, file = prod1_file)
 ```
+
+
 
 
 ## Produto 2
 
 
 
-```{r, eval = FALSE}
-meta_qc <- mutate(exdata_qc, 
-                  # identificador de cada evento
-                  id = crv_detect(x = tar, thresh = -99, min.steps = 2, numerate = TRUE)) %>%
+```{r}
+# qc2, i = 2, teste de repetição consecutiva de valores 
+meta_qc <- tar_data_qc %>%
+  group_by(site) %>%
+  # identificador de cada evento
+  mutate(id = crv_detect(x = tair, 
+                         thresh = -99, 
+                         min.steps = 2, 
+                         numerate = TRUE)) %>%
   filter(!is.na(id)) %>%
-  group_by(id) %>%
-  summarise(site = first(site),
-            qc = first(qc),
+  ungroup() %>%
+  arrange(site) %>%
+  group_by(site, id) %>%
+  dplyr::summarise(#site = unique(site),
+            qc = mean(qc),
             n = n(),
             start = min(date), 
             end = max(date),
-            value = unique(tar)) %>%
-  select(site:value, id)
-DT::datatable(meta_qc, options = list( dom = 't'))
+            value = unique(tair)) %>%
+  ungroup() %>%
+  # reordenar
+  select(site, qc:value, id)
+meta_qc
 ```
 
 
 
-#
-A coluna adicional com a variável `value` foi adicionada porque é útil saber qual o valor que está se repetindo num dado evento formado por valores consecutivos repetidos. Essa variável é necessária neste tipo de QC mas pode ser opcional, dependendo do `qc` aplicado.
 
-```{r, eval = FALSE}
-prod2_file <- str_replace("../output/exdata-qcID-metadata.rds", "ID", as.character(id_qc))
+A coluna adicional `value` foi adicionada porque, no `qc2` em particular, é útil saber qual o valor que está se repetindo. Além disso, também é útil saber quantos eventos de valores consecutivos repetidos ocorrem, por isso a variável `id` indentifica cada evento ocorrido em ordem sequencial. Essas variáveis são específicas do `qc2`.
+
+```{r}
+prod2_file_name <- "../output/PREFIX-qcID-metadata.rds"
+prod2_file <- prod2_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
 prod2_file
 ```
 
-```{r, eval = FALSE}
-saveRDS(exdata_qc1, file = prod2_file)
+```{r}
+saveRDS(meta_qc, file = prod2_file)
 ```
 
 ## Produto 3
 
 Tabela resumo do numéro de casos suspeitos pelo `qc` aplicado e a porcentagem.
 
-```{r, eval = FALSE}
-summary_qc <- meta_qc %>%
+```{r}
+# num de observações em cada EMA
+obs_by_site <- tar_data %>%
   group_by(site) %>%
-  summarise(qc = first(qc),
-            tot = sum(n),
-            perc = tot/nrow(exdata_qc) * 100)
-DT::datatable(summary_qc, options = list(dom = 't'))
+  summarise(n_obs = n()) 
+obs_by_site
 ```
 
-```{r, eval = FALSE}
-prod3_file <- str_replace("../output/exdata-qcID-summary.rds", "ID", as.character(id_qc))
+```{r}
+# produto 3
+summary_qc <- meta_qc %>%
+  group_by(site) %>%
+  summarise(qc = first(qc), 
+            tot = sum(n), 
+            n_events = max(id)) %>%  # tot: total de dados suspeitos por site
+  ungroup() %>%
+  full_join(obs_by_site, by = "site") %>%
+  mutate(perc = round(tot/n_obs * 100, 1), n_obs = NULL) 
+summary_qc
+#DT::datatable(summary_qc, options = list(dom = 't'))
+```
+
+
+
+
+```{r}
+prod3_file_name <- "../output/PREFIX-qcID-summary.rds"
+prod3_file <- prod3_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
 prod3_file
 ```
 
@@ -133,13 +192,178 @@ saveRDS(summary_qc, file = prod3_file)
 
 - arquivo do Produto 1
 
-    - ` prod1_file`
+    - `r prod1_file`
 
 - arquivo do Produto 2
 
-    - ` prod2_file`
+    - `r prod2_file`
 
 - arquivo do Produto 3
 
-    - ` prod3_file`
-       
+    - `r prod3_file`
+
+# Resultados
+
+- mapa do summary_qc
+
+```{r}
+source("../R/gg_bubble.R")
+# dados_summary combinados com info
+summary_qc_j <- left_join(summary_qc, tar_info, by = "site")
+estados <- readRDS("../data/estados_sul.rds")
+gg_tot_qc2 <- gg_bubble(data = summary_qc_j
+                     ,z = "perc"
+                     ,breaks = c(pretty(summary_qc_j$perc, n = 8))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2
+                     ,point_size = 3
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colourbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc2
+
+```
+
+```{r}
+filter_meta <- function(limiar = 2){
+# produto 3
+summary_qc_above2 <- meta_qc %>% filter(n > limiar) %>%
+  group_by(site) %>%
+  summarise(qc = first(qc), 
+            tot = sum(n), 
+            n_events = max(id)) %>%  # tot: total de dados suspeitos por site
+  ungroup() %>%
+  full_join(obs_by_site, by = "site") %>%
+  mutate(perc = as.integer(round(tot/n_obs * 100, 0)), n_obs = NULL) 
+summary_qc_above2 <- arrange(summary_qc_above2, desc(perc))
+summary_qc_above2
+summary_qc_above2_j <- left_join(summary_qc_above2, tar_info, by = "site")
+return(summary_qc_above2_j)
+}
+data_plot <- filter_meta(limiar = 2)
+data_plot
+gg_tot_qc2_above2 <- gg_bubble(data = data_plot
+                     ,z = "perc"
+                     ,breaks = c(pretty(data_plot$perc, n = 4))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2
+                     ,point_size = 3
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colorbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc2_above2
+#
+data_plot <- filter_meta(limiar = 3)
+data_plot
+gg_tot_qc2_above3 <- gg_bubble(data = data_plot
+                     ,z = "perc"
+                     ,breaks = c(pretty(data_plot$perc, n = 4))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2
+                     ,point_size = 3
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colorbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc2_above3
+
+data_plot <- filter_meta(limiar = 4)
+data_plot
+gg_tot_qc2_above4 <- gg_bubble(data = data_plot
+                     ,z = "perc"
+                     ,breaks = c(pretty(data_plot$perc, n = 4))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2
+                     ,point_size = 3
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colorbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc2_above4
+```
+
+
+
+
+- histograma do meta_qc$n
+
+```{r}
+#ggp2_qc2_hist <- ggplot(data = meta_qc) +
+#ggp2_qc2_hist <- ggplot(data = mutate(meta_qc, n_trans = ifelse(n %in% c(2), NA, n))) +
+ggp2_qc2_hist <- ggplot(data = filter(meta_qc, n > 4)) +
+  #geom_histogram(aes(x = factor(round(n))), stat = "count")
+  #geom_histogram(aes(x = n_trans, y = ..count../sum(..count..) * 100), stat = "count") +
+  #geom_histogram(aes(x = n_trans, stat = "count")) +
+  geom_histogram(aes(x = n, stat = "count")) +
+  #scale_x_continuous(breaks = scales::pretty_breaks(n = 10), expand = c(0.01,0)) +
+  #scale_y_continuous(breaks = scales::pretty_breaks(n = 10), expand = c(0.01,0)) +
+  labs(x = "Tamanho da sequência de valores repetidos",
+       y = "Frequência de ocorrência(%)")
+ggp2_qc2_hist
+```
+
+- Visão geral dos dados suspeitos no qc2
+
+```{r, fig.height=14, fig.asp=1.2}
+ggp_wide_view <- ggplot(data = tar_data_qc,
+                        aes(x = date, y = site)) +
+              #data = records_month_plot %>% filter(year(date)==2016)) +
+  #geom_tile(aes(fill = avail)) +
+  #geom_raster(aes(fill = avail)) + 
+  geom_point(aes(colour = factor(suspect)), shape = 15, size = 2.6) + 
+  labs(x = "Ano", y = "EMA") +
+  #ylim(rev(levels(records_month_plot$site)))+
+  #scale_y_discrete(expand = c(0, 0)
+                   #labels = yl_labels
+  #                 ) +
+   #scale_y_discrete(position = c("right"),
+    #                labels = yr_labels, ) +
+  scale_x_datetime(expand = c(0, 0), 
+                   #breaks = scales::date_breaks(width = "1 year"),
+                   #minor_breaks = scales::date_breaks(width = "6 months"),
+                   #labels = scales::date_format("%Y")
+                   ) +
+  # scale_colour_gradientn("obs/month\n(%)",
+  #                        colours = viridis::viridis(n = 256),
+  #                        na.value = NA) +
+    scale_colour_manual("rótulo",
+                         values = c("1" = "black", "0" = "snow")
+                      ) +
+#  scale_fill_gradientn("records/month\n(%)",
+#                       colours = viridis::viridis(n= 256),
+#                       na.value = NA)+ 
+  theme_bw() +
+  theme(text = element_text(size=10)
+        #aspect.ratio = 1
+        #aspect.ratio = 2 / (1 + sqrt(5))
+        #aspect.ratio = (1 + sqrt(5))/ 2
+        ) + 
+  guides()
+ggp_wide_view
+```
