@@ -4,6 +4,7 @@
 .Ruserdata
 output/*.rds
 data/*.rds
+data/*.xls
 vignettes/*.html
 .dropbox
 jonas
