@@ -213,7 +213,12 @@ sites_sel <- tar_periods %>%
 sites_sel
 length(sites_sel)
 # filtrar dados só com as EMAs do sites_sel
-tar_data_sel <- filter(tar_data_sel, site %in% sites_sel)
+tar_data_sel <- filter(tar_data_sel, site %in% sites_sel) 
+# calc tmed horária baseado nos extremos
+tar_data_sel$tmed <- select(tar_data_sel, tmax, tmin) %>%
+  rowMeans(., na.rm = TRUE) %>%
+  ifelse(is.na(.), NA, .)
+tar_data_sel <- arrange_vars(tar_data_sel, c("tmed" = 3))
 glimpse(tar_data_sel)
 ```
 
