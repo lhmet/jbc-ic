@@ -406,7 +406,6 @@ ggp <- ggplot(aes(x = date,
 ggp
 ```
 
-#> dados de julho de 2016 não inclusos no conj de dados
 
 
 ```{r plot-disp, fig.width=9.3, fig.height=7.25, fig.align='center' }
