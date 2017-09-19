@@ -18,13 +18,17 @@ output:
 
 Cada teste de controle de qualidade (QC) será referenciado por um número, conforme abaixo:
 
-- `qc1` teste de amplitude variação 
+- `qc1` teste de intervalo de variação 
 
     - `qc1a` baseado em limites estabelecidos pelo intervalo de medida instrumental
     
     - `qc1b` baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
 
 - `qc2` teste de persistência temporal (valores consecutivos repetidos) 
+
+    - `qc2a` aplicado a temperatura do ar instantânea ($T_{air}$ no conjunto de dados)
+    
+    - `qc2b` aplicado a temperatura do ar média horária ($T_{med}=(T_{max}+T_{min})/2$)
 
 - `qc3` teste de cosistência interna
 
