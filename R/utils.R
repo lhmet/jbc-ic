@@ -34,3 +34,9 @@ arrange_vars <- function(data, vars){
 
 replace_inf <- function(x) ifelse(!is.finite(x), NA, x)
 #replace_inf(c(Inf, -Inf, 1, NA))
+
+# Apply fun dealing with vectors values that may be all NA ---------------------
+fun_NA <- function(x, fun, ...){
+  if(all(is.na(x))) return(NA)
+  fun(x, ...)
+}
