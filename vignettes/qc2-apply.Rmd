@@ -94,7 +94,7 @@ prod1_file
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 saveRDS(tar_data_qc, file = prod1_file)
 ```
 
@@ -168,7 +168,7 @@ summary_qc <- meta_qc %>%
             n_events = max(id),
             n_max = max(n)) %>%  # tot: total de dados suspeitos por site
   ungroup() %>%
-  full_join(obs_by_site, by = "site") %>%
+  left_join(obs_by_site, by = "site") %>%
   mutate(perc = round(tot/n_obs * 100, 2), n_obs = NULL) 
 summary_qc
 #DT::datatable(summary_qc, options = list(dom = 't'))
@@ -203,7 +203,7 @@ saveRDS(summary_qc, file = prod3_file)
 
     - `r prod3_file`
 
-# Resultados
+# Gráficos
 
 ## Mapas da distribuição espacial das informações do produto 3.
 

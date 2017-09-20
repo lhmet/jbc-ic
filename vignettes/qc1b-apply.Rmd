@@ -28,6 +28,7 @@ pacotes <- c("knitr", "tidyverse", "lubridate", "openair", "stringr",
 easypackages::libraries(pacotes)
 # scripts 
 source("../R/utils.R")
+source("../R/crv_detect.R")
 source("../R/temp-records-inmet.R")
 source("../R/network-dists.R")
 source("../R/gg_bubble.R")
@@ -100,14 +101,10 @@ nearest
 # summary_dists %>% arrange(desc(dmn))
 ```
 
-Tabela de extremos por EMA.
 
-```{r}
-left_join(nearest, )
-```
+# Produtos 
 
-
-# Produto 1
+## Produto 1
 
 Conjunto de dados original com uma nova coluna nomeada como $varname\_qc_{i}$. $varname$ é o nome da variável a qual está sendo aplicado o teste de QC. $i$ é o número identificador do teste de QC e pode variar de $i=1,..,n$, onde $n$ é o nº de testes de QC.
 
@@ -123,7 +120,10 @@ Neste caso a variável usada como rótulo identificador de dado suspeito será c
 # identificador do qc
 id_qc <- "1b"
 # preparação dos dados para compatibilidade no join
-nearest_stn_j <- mutate(ungroup(nearest), site = ref, ref = NULL, dis = NULL)
+nearest_stn_j <- mutate(ungroup(nearest), 
+                        site = ref,
+                        ref = NULL, 
+                        dis = NULL)
 nearest_stn_j
 records_emc_j <- rename(records_emc, "aux" = site)
 records_emc_j
@@ -142,3 +142,276 @@ nrow(tar_data) == nrow(tar_data_qc)
 ``` 
 
 
+```{r}
+prod1_file_name <- "../output/PREFIX-qcID.rds"
+prod1_file <- prod1_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
+prod1_file
+```
+
+```{r}
+saveRDS(tar_data_qc, file = prod1_file)
+```
+
+
+## Produto 2
+
+
+```{r}
+# total de casos suspeitos
+nr_susp <- tar_data_qc %>% filter(tmed_qc1b == 1) %>% nrow()
+# tabela de metadata para eventos consecutivos de valores fora dos limites -----
+meta_qc <- tar_data_qc %>%
+  group_by(site) %>%
+  # identificador de cada evento
+  mutate(id = crv_detect(x = tmed_qc1b, 
+                         thresh = 0,
+                         min.steps = 1, 
+                         numerate = TRUE)) %>%
+  filter(!is.na(id)) %>%
+  ungroup() %>%
+  arrange(site) %>%
+  group_by(site, id) %>%
+  dplyr::summarise(#site = unique(site),
+            qc = first(qc),
+            n = n(),
+            start = min(date), 
+            end = max(date),
+            tmin = fun_NA(tmed, min, na.rm = TRUE),
+            tmed = fun_NA(tmed, mean, na.rm = TRUE),
+            tmax = fun_NA(tmed, max, na.rm = TRUE)) %>%
+  ungroup() %>%
+  # reordenar
+  select(site, qc:tmax, id) %>%
+  arrange(site, desc(n))
+head(meta_qc)
+tail(meta_qc)
+sum(meta_qc$n) == nr_susp
+#filter(meta_qc, is.na(n))
+```
+
+
+Foram adicionadas 3 colunas a tabela de metadados do `qc1b`:   `tmin`, `tmed`, `tmax` para verificar-se essas estatísticas durante o evento.
+
+```{r}
+prod2_file_name <- "../output/PREFIX-qcID-metadata.rds"
+prod2_file <- prod2_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
+prod2_file
+```
+
+```{r}
+saveRDS(meta_qc, file = prod2_file)
+```
+
+
+## Produto 3
+
+Tabela resumo do numéro de casos suspeitos pelo `qc1b` aplicado e a porcentagem.
+
+```{r}
+# num de observações em cada EMA
+obs_by_site <- tar_data %>%
+  group_by(site) %>%
+  summarise(n_obs = n()) 
+obs_by_site
+```
+
+```{r}
+# produto 3
+summary_qc <- meta_qc %>%
+  group_by(site) %>%
+  summarise(qc = first(qc), 
+            tot = sum(n), 
+            n_events = max(id),
+            n_max = max(n)) %>%  # tot: total de dados suspeitos por site
+  ungroup() %>%
+  left_join(obs_by_site, by = "site") %>%
+  mutate(perc = round(tot/n_obs * 100, 4), n_obs = NULL) 
+summary_qc
+#sum(summary_qc$tot)
+#DT::datatable(summary_qc, options = list(dom = 't'))
+```
+
+
+```{r}
+prod3_file_name <- "../output/PREFIX-qcID-summary.rds"
+prod3_file <- prod3_file_name %>%
+  str_replace("PREFIX", as.character(prefix)) %>%
+  str_replace("ID",as.character(id_qc))
+prod3_file
+```
+
+```{r, eval = FALSE}
+saveRDS(summary_qc, file = prod3_file)
+```
+
+# Arquivos gerados
+
+- arquivo do Produto 1
+
+    - `r prod1_file`
+
+- arquivo do Produto 2
+
+    - `r prod2_file`
+
+- arquivo do Produto 3
+
+    - `r prod3_file`
+
+# Gráficos
+
+## Mapas da distribuição espacial das informações do produto 3.
+
+### Observações suspeitas
+
+#### Porcentagem
+
+```{r, fig.width=9.3, fig.height=7.25, fig.align='center' }
+# dados_summary combinados com info
+summary_qc_j <- full_join(summary_qc, tar_info, by = "site") %>%
+ mutate_if(is.numeric, replace_NA)
+
+estados <- readRDS("../data/estados_sul.rds")
+var_plot <- "perc"
+gg_tot_qc1b <- gg_bubble(data = summary_qc_j
+                     ,z = var_plot
+                     ,breaks = c(pretty(summary_qc_j[[var_plot]], n = 6))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2.6
+                     ,point_size = 5
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colourbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc1b
+```
+
+
+#### Total
+
+```{r, fig.width=9.3, fig.height=7.25, fig.align='center' }
+var_plot <- "tot"
+gg_tot_qc1b <- gg_bubble(data = summary_qc_j
+                     ,z = var_plot
+                     ,breaks = c(pretty(summary_qc_j[[var_plot]], n = 6))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Dados suspeitos \n (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2.6
+                     ,point_size = 5
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colourbar"
+                     ) + labs(title = "QC2")
+gg_tot_qc1b
+```
+
+
+### Máximo n° de horas consecutivas suspeitas por EMA
+
+```{r, fig.width=9.3, fig.height=7.25, fig.align='center' }
+var_plot <- "n_max"
+gg_max_rep_qc2 <- gg_bubble(data = summary_qc_j
+                     ,z = var_plot
+                     ,breaks = c(pretty(summary_qc_j[[var_plot]], n = 11))
+                     ,limites = estados
+                     ,colors_z = viridis::viridis
+                     ,color_fill = "burlywood3"
+                     ,z_legend = "Maior sequência \n de obs. suspeitas (%)"
+                     ,text_color = "gray30"
+                     ,point_color = "transparent"
+                     ,text_size = 2.6
+                     ,point_size = 5
+                     ,repel_min_seg_len = 2,
+                     ,legend.justification = c(0,1) 
+                     ,legend.position = c(0.01, 0.99)
+                     ,guide_type = "colourbar"
+                     ) + labs(title = "QC2")
+gg_max_rep_qc2
+```
+
+## Histograma de observações suspeitas por n° de horas repetidas consecutivas (produto 2)
+
+```{r}
+ggp_qc2_hist <- ggplot(data = meta_qc) +
+  geom_histogram(aes(x = n, y = ..count../sum(..count..) * 100), stat = "count") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 7), expand = c(0.01,0)) +
+  labs(x = "Horas suspeitas consecutivas",
+       y = "Frequência de ocorrência(%)") 
+ggp_qc2_hist 
+#-------------------------------------------------------------------------------
+
+
+ggplot(data = meta_qc) +
+  geom_histogram(aes(x = n), stat = "count") +
+  #scale_y_continuous(labels = comma)
+  #scale_y_log10(breaks = c(200000, 10000, 2500, 1000, 500, 100, 50, 10,1),
+  #              labels = point) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 7), expand = c(0.01,0)) +
+  labs(x = "Horas repetidas consecutivas",
+       y = "Frequência de ocorrência absoluta")
+```
+
+
+## Visão geral da distribuição das observações suspeitas (produto 1) no tempo e nas EMAs
+
+```{r, fig.height=14, fig.asp=1.2}
+sites_o <- summary_qc_j$site[order(summary_qc_j$tot)]
+sites_o
+data_image <- tar_data_qc %>%
+  mutate(site = ordered(site, levels = sites_o))
+ggp_image <- ggplot(data = data_image,
+                        aes(x = date, y = site)) +
+  geom_point(aes(colour = factor(tmed_qc1b)), shape = 15, size = 2.6) + 
+  labs(x = "Ano", y = "EMA") +
+  scale_x_datetime(expand = c(0, 0), date_breaks = "1 year", date_labels = "%Y") +
+    scale_colour_manual("rótulo",
+                         values = c("1" = "black", 
+                                    "0" = "yellow")) +
+  theme_bw() +
+  theme(text = element_text(size=10)
+        ) #+ guides()
+ggp_image
+```
+
+
+
+### Número de observações suspeitas por EMA
+
+```{r, fig.height=14, fig.asp=1.2}
+#meta_qc
+data_bar_qc2 <- summary_qc_j %>% 
+  #right_join(., select(meta_qc, site, value), by = "site") %>%
+  mutate(site = ordered(site, levels = sites_o)) %>% 
+  filter(tot > 0)
+data_bar_qc2
+ggp_tot_qc2 <- ggplot(data = data_bar_qc2) +
+  geom_bar(aes(x = site, y = tot
+               #, fill = value
+               ),
+  #geom_bar(aes(x = site, y = perc),
+           stat = "identity",
+           width = 0.8) +
+  
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10), 
+                     expand = c(0.01,0)
+                     #, labels = point
+                     ) +
+  coord_flip() 
+ggp_tot_qc2
+# fazer gráfico com num de casos por mês (evolução temporal)
+```
