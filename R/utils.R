@@ -40,3 +40,14 @@ fun_NA <- function(x, fun, ...){
   if(all(is.na(x))) return(NA)
   fun(x, ...)
 }
+
+
+replace_NA <- function(x, fill.value = 0) {
+  #x <- summary_qc_j$tot
+  replace(x, is.na(x), fill.value)
+}
+
+
+point <- scales::format_format(big.mark = ".",
+                               decimal.mark = ",",
+                               scientific = FALSE)
