@@ -54,7 +54,10 @@ DT::datatable(exdata, options = list(pageLength = 40,dom = 't'))
 
 # Produtos de cada QC 
 
-A aplicação de cada QC produzirá os seguintes produtos padronizados:
+A aplicação de cada QC produzirá os produtos padronizados abaixo.
+
+Os arquivos de saída de cada QC conterão somente as variável(is) meteorológica(s)
+necessárias para sua aplicação.
 
 ## Produto 1
 
