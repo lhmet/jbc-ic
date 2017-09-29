@@ -16,23 +16,42 @@ output:
 
 # Convencões dos testes de controle de qualidade
 
-Cada teste de controle de qualidade (QC) será referenciado por um número, conforme abaixo:
+Cada teste de controle de qualidade (QC) será referenciado por um número, 
+conforme descrito abaixo:
 
 - `qc1` teste de intervalo de variação 
 
     - `qc1a` baseado em limites estabelecidos pelo intervalo de medida instrumental
+        - $T_{avg}=(T_{max}+T_{min})/2$
     
     - `qc1b` baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
+        - $T_{avg}$
 
 - `qc2` teste de persistência temporal (valores consecutivos repetidos) 
 
-    - `qc2a` aplicado a temperatura do ar instantânea ($T_{air}$ no conjunto de dados)
-    
-    - `qc2b` aplicado a temperatura do ar média horária ($T_{med}=(T_{max}+T_{min})/2$)
+    - $T_{inst}$
 
-- `qc3` teste de cosistência interna
+    - $T_{avg}$
+
+- `qc3` teste de consistência interna
+
+    - `qc3a`
+        - $T_{inst} < T_{min}$ **ou** $T_{inst} > T_{max}$
+       
+    - `qc3b`
+        - $T_{max} = T_{min}$
+
+    - `qc3c`
+        - $T_{min} > T_{max}$
+
+    - `qc3d`
+        - $T_{avg} < T_{dew}$
 
 - `qc4` teste consistência temporal (taxa de variação horária)
+
+    - `qc4a` Step Test
+    
+    - `qc4b` teste de QC *Valente & Tatsch (2017)*
 
 
 # Especificação dos sensores das EMAs do INMET.
