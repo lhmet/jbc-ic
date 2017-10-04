@@ -172,3 +172,6 @@ saveRDS(summary_qc, file = prod3_file)
 
     - `r prod3_file`
         - *arquivo útil para visualização espacial da distribuição da frequência de ocorrência de dados suspeitos.*
+
+
+

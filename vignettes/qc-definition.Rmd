@@ -23,35 +23,51 @@ conforme descrito abaixo:
 
     - `qc1a` baseado em limites estabelecidos pelo intervalo de medida instrumental
         - $T_{avg}=(T_{max}+T_{min})/2$
+        
+        - $-50 > T_{avg} > 60 °C$
     
     - `qc1b` baseado no limites máximos e mínimos absolutos históricos da estação climatológica mas próxima da EMA
-        - $T_{avg}$
+        - $T_{low, j, m} > T_{avg} >  T_{high, j, m}$; onde $j$: estação climatológica mais próxima da EMA e $m = 1,...,12$ (mês do ano).
 
 - `qc2` teste de persistência temporal (valores consecutivos repetidos) 
 
-    - $T_{inst}$
+    - $T_{inst}$ (*é mesmo necessário?*)
 
     - $T_{avg}$
 
 - `qc3` teste de consistência interna
 
-    - `qc3a`
-        - $T_{inst} < T_{min}$ **ou** $T_{inst} > T_{max}$
+
+    - Temperatura do ponto de orvalho
+        - `qc3a`
+            - $T_{d\_inst} < T_{d\_min}$ **ou** $T_{d\_inst} > T_{d\_max}$
+
+        - `qc3b`
+            - $T_{d\_min} = T_{d\_max}$
+
+        - `qc3c`
+            - $T_{d\_min} > T_{d\_max}$
+
+    - Temperatura do ar
+        - `qc3d`
+            - $T_{inst} < T_{min}$ **ou** $T_{inst} > T_{max}$
        
-    - `qc3b`
-        - $T_{max} = T_{min}$
+        - `qc3e`
+            - $T_{max} = T_{min}$
 
-    - `qc3c`
-        - $T_{min} > T_{max}$
+        - `qc3f`
+            - $T_{min} > T_{max}$
+            
+        - `qc3g`
+            - $T_{avg} < T_{d\_avg}$
 
-    - `qc3d`
-        - $T_{avg} < T_{dew}$
 
 - `qc4` teste consistência temporal (taxa de variação horária)
 
     - `qc4a` Step Test
     
     - `qc4b` teste de QC *Valente & Tatsch (2017)*
+
 
 
 # Especificação dos sensores das EMAs do INMET.
@@ -61,5 +77,6 @@ conforme descrito abaixo:
 | Temperatura do ar      | Pt100      | $\pm0,08$                               | -50/60°C            | 0,1°C ?      | 2 m                  |
 | Umidade relativa do ar | Humicap180 | $\pm2\%$ (0/90 %), $\pm3\%$ (90/100%)  | 0,8/100 \%          | 0,1% ?       | 2 m                  |
 | Precipitação           | QMR102     | < 24 mm/h ($\pm 1\%$), < 120 mm/h ($\pm5\%$) | 0/120 mm/h          | 0,2mm /pulso | 1,5 m                |
+
 
 
