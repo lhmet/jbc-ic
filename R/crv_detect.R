@@ -30,7 +30,7 @@ crv_detect <- function(x, thresh = 0, min.steps = 2, numerate = FALSE){
   
   default <- -Inf
   # to deal with crv of NAs and 0s 
-  if(is.na(thresh)) {
+  if (is.na(thresh)) {
     default <- -9999
     thresh <- -Inf
   } 
@@ -44,7 +44,7 @@ crv_detect <- function(x, thresh = 0, min.steps = 2, numerate = FALSE){
   
   # expand back into time series
   crv_event_ts <- is_crv[idx]
-   if(!numerate) return(crv_event_ts)
+   if (!numerate) return(crv_event_ts)
   
    # numerate events of crv
    crv_enum <- cumsum(is_crv) * is_crv
@@ -76,7 +76,9 @@ crv_summary <- function(.data, var.name = "prec"){
  #                                                                                                                                            "A900")), .Names = c("date", "prec", "site"), row.names = c(NA, 
  #                                                                                                                                                                                                        -19L), class = "data.frame")
   #.data = exdata; var.name = "tar"
-  stopifnot(is.data.frame(.data), "site" %in% names(.data))
+  stopifnot(is.data.frame(.data), 
+            all(c("site", var.name) %in% names(.data))
+            )
   
   dtfm <- data.frame(.data, 
                      id = crv_detect(.data[[var.name]], 
