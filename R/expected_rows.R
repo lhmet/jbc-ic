@@ -1,4 +1,7 @@
 expected_rows <- function(x){
+
+  stopifnot(all(c("site", "date") %in% names(x)))
+
   tibble::data_frame(nr = nrow(x), 
              start = min(x$date), 
              end = max(x$date),
