@@ -21,7 +21,7 @@ conforme descrito abaixo:
 
 - `qc1` teste de intervalo de variação 
 
-    - `qc1a` baseado em limites estabelecidos pelo intervalo de medida instrumental
+    - `qc1a` baseado nos limites de operação do sensor (QMT 103/Pt-100)
         - $T_{avg}=(T_{max}+T_{min})/2$
         
         - $-50 > T_{avg} > 60 °C$
