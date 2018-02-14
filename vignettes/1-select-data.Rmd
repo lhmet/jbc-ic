@@ -198,7 +198,7 @@ tar_periods
 As EMAs selecionadas devem ter um período de pelo menos 4 anos e baseado em trabalhos prévios devem começar em 2008.
 
 ```{r}
-begin_year <- 2008
+begin_year <- 2000
 end_year <- 2016
 period_thres <- 4
 
@@ -248,11 +248,11 @@ saveRDS(tar_info_sel, file = file.path("../output", file_info_sel))
 
 Gráfico do período de dados.
 
-```{r plot-periodo, fig.width=9.3, fig.height=7.25, fig.align='center' }
+```{r plot-periodo, fig.width=8.3, fig.height=6.25, fig.align='center' }
 estados <- readRDS("../data/estados_sul.rds")
 filter(tar_periods, site == "A825")
-gg_periodo <- gg_bubble(data =  filter(tar_periods, site %in% sites_sel)
-                     #data = tar_periods
+gg_periodo <- gg_bubble(#data =  filter(tar_periods, site %in% sites_sel)
+                     data = tar_periods
                      ,z = "period"
                      ,breaks = pretty(tar_periods$period, n = 10)
                      ,limites = estados
@@ -348,6 +348,26 @@ records_month <- tar_data_sel %>%
   mutate(x = as.numeric(date)) 
 records_month 
 ```
+
+Evolução do nº de EMAs no tempo.
+```{r}
+limiar <- 60
+n_emas_by_month <- records_month %>% 
+  mutate(is_avail = ifelse(tair >= limiar, 1, 0)) %>%
+  group_by(date) %>%
+  summarise(N = sum(is_avail))
+n_emas_by_month
+
+n_emas_by_month %>%
+  ggplot(., aes(x = date, y = N)) +
+  geom_line() +
+  labs(y = "nº de EMAs") +
+  scale_x_datetime(date_breaks = "12 months", 
+                   date_labels = "%Y") +
+  theme_bw()
+
+```
+
 
 ```{r}
 # ordem dos sites por disponibilidade
@@ -473,6 +493,5 @@ cowplot::plot_grid(gg_periodo,
 
     - `output/tar-data-inmet-2008-2016-4yrs-south.rds`
     
-
 
 
