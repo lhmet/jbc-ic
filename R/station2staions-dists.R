@@ -6,26 +6,22 @@
 #' @param netw_aux data.frame with columns site, lon, lat
 #' @param dx_max optional, threshold distance (in km) below which stations are keep.  
 #'
-#' @details '...' include paramaters like allpairs, useful when we want
-#' to consider all possible combinations between station. 'lonlat', logical to
-#' coordinates in lat e lon. dx_max to return only stations within a specified distance.
 #' @return
 #' @export
 #'
 #' @examples
-network_dists <- function(netw_ref = coords_ngb, 
+station2stations_dists <- function(netw_ref = coords_target, 
                           netw_aux = coords_ngb,
+                          dx_max = NA,
                           ...){
   
   pts1 <- dplyr::select(netw_ref, lon, lat) %>%
-    as.data.frame() # head(pts2)
+    as.data.frame(); # head(pts2)
   pts2 <- dplyr::select(netw_aux, lon, lat) %>%
     as.data.frame()
   # diatance matrix
   dists <- raster::pointDistance(p1 = pts1, 
                                  p2 = pts2, 
-                                 #dx_max = NA,
-                                 #allpairs = TRUE,
                                  #lonlat = TRUE
                                  ...
                                  ) %>%
@@ -45,20 +41,13 @@ network_dists <- function(netw_ref = coords_ngb,
     dplyr::pull() %>%
     as.character()
   
-  colnames(dists) <- netw_aux %>%
-    select(site) %>% 
-    dplyr::pull() %>%
-    as.character()
+  dists <- rename(dists, "distance_km" = .) %>%
+    mutate(site = netw_aux %>%
+             select(site) %>% 
+             dplyr::pull() %>%
+             as.character()
+           ) %>%
+    arrange(distance_km)
   
-  dists <- mutate(dists, ref = ref_sites) %>%
-    tibble::as_data_frame() %>%
-    arrange_vars(., c("ref" = 1)) 
-  #dists
-  
-  ref_aux_dis <- dists %>%
-    tidyr::gather(aux, dis, -ref) %>% 
-    dplyr::filter(!is.na(dis)) %>%
-    dplyr::arrange(ref, dis)
-  
-  return(ref_aux_dis)
+    return(dists)
 }

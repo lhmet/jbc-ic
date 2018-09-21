@@ -84,6 +84,7 @@ meta_emc
 dists <- network_dists(netw_ref = tar_info, 
                        netw_aux = meta_emc, 
                        dx_max = NA,
+                       #allpairs = TRUE,
                        lonlat = TRUE)
 # 5 closest
 five_nearest <- dists %>%

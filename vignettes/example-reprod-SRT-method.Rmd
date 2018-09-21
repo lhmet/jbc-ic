@@ -1,0 +1,44 @@
+---
+title: "Reproduzindo exemplos do Teste de Regressão Espacial (SRT)"
+output: html_document
+bibliography: refs.bib
+csl: abnt.csl
+---
+
+
+# Descrição
+
+O Teste de regressão espacial (SRT) é descrito em @Hubbard2005. Para implementar o método usei os dados de exemplo disponíveis em @Hubbard2012. A descrição do método dada em @You2006 também foi útil para esclarecer dúvidas.
+
+# Pré-requisitos
+
+```{r setup, message=FALSE}
+pcks <- c("tidyverse", "modelr", "broom", "ggfortify")
+easypackages::libraries(pcks)
+```
+
+# Dados
+
+Os dados da Tabela 3 disponíveis em @Hubbard2012 foram digitalizados para reproduzir os resultados do SRT.
+
+```{r}
+tab3 <- readr::read_table("../data/data-table3-Hubbard2012-Cap1-BookPractConcepQC.txt",
+  col_names = TRUE
+) %>%
+  setNames(., gsub("\\'", "lin", names(.))) %>%
+  setNames(., gsub("\\^", "", names(.))) %>%
+  setNames(., gsub("\\/", "_", names(.))) %>%
+  setNames(., gsub("\\(", "", names(.))) %>%
+  setNames(., gsub("\\)", "", names(.))) %>%
+  setNames(., gsub("-", "_", names(.))) %>%
+  setNames(., tolower(names(.)))
+DT::datatable(tab3)
+# tab3_long <- select(tab2, days:y4) %>%
+tab3_long <- select(tab3, days:y4) %>%
+  gather(y, tempf, -c(x, days))
+```
+
+
+
+# Referências
+
