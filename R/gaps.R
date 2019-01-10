@@ -67,7 +67,7 @@ date_longest_gap <- function(temp, dates, ...){
   #if (nrow(gp) == 1 && gp$length == 0) return(NA)
   if (nrow(gp) == 1 & all(gp$length == 0)) return(NA)
   
-  sdates_gaps <- dates[gp$start]
+  sdates_gaps <- as.character(dates)[gp$start]
   date_longest_gap <- sdates_gaps[which.max(gp$length)[1]]
   return(date_longest_gap)
 }

@@ -4,7 +4,7 @@
 #' 
 #' @param netw_ref data.frame with columns site, lon, lat
 #' @param netw_aux data.frame with columns site, lon, lat
-#' @param dx_max optional, threshold distance (in km) below which stations are keep.  
+#' @param dx_max optional, threshold distance (in km) below which stations are keep.
 #'
 #' @details '...' include paramaters like allpairs, useful when we want
 #' to consider all possible combinations between station. 'lonlat', logical to
@@ -15,7 +15,10 @@
 #' @examples
 network_dists <- function(netw_ref = coords_ngb, 
                           netw_aux = coords_ngb,
-                          ...){
+                          all_pairs = TRUE,
+                          lon_lat = TRUE,
+                          dx_max = NA
+                          ){
   
   pts1 <- dplyr::select(netw_ref, lon, lat) %>%
     as.data.frame() # head(pts2)
@@ -24,10 +27,8 @@ network_dists <- function(netw_ref = coords_ngb,
   # diatance matrix
   dists <- raster::pointDistance(p1 = pts1, 
                                  p2 = pts2, 
-                                 #dx_max = NA,
-                                 #allpairs = TRUE,
-                                 #lonlat = TRUE
-                                 ...
+                                 allpairs = all_pairs,
+                                 lonlat = lon_lat
                                  ) %>%
     as.data.frame() %>% 
     # to km
