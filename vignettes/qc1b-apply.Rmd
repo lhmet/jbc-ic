@@ -85,7 +85,7 @@ dists <- network_dists(netw_ref = tar_info,
                        netw_aux = meta_emc, 
                        dx_max = NA,
                        #allpairs = TRUE,
-                       lonlat = TRUE)
+                       lon_lat = TRUE)
 # 5 closest
 five_nearest <- dists %>%
   dplyr::group_by(ref) %>% 
