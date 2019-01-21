@@ -1,0 +1,189 @@
+---
+title: Implmlentação do teste de QC espacial
+output: html_notebook
+---
+
+
+# Pré-configurações
+
+```{r}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(c("tidyverse", "ggfortify", "lubridate"))
+
+# Carregando scripts necessários
+source("../R/network-dists.R")
+source("../R/utils.R")
+```
+
+# Dados
+
+Como foi gerado estes dados.
+
+```{r}
+(var_data <- rio::import("../output/s08_data_sel.rds"))
+```
+
+
+var_info <- rio::import("../output/summary_80.rds")
+
+```
+
+```{r}
+# Determinando as distâncias entre uma estação de referência e suas vizinhas
+dists <- network_dists(
+  netw_ref = var_info,
+  netw_aux = var_info, 
+  dx_max = NA,
+  lon_lat = TRUE)
+dists
+
+```
+
+```{r}
+# Selecionando estação de referência para teste (A803 - Santa Maria) e suas 10 vizinhas mais próximas
+EMA_dists <-
+  dists %>%
+  filter(ref == "A803") %>%
+  arrange(dis) %>% 
+  head(11)
+EMA_dists
+
+```
+
+```{r}
+# Preparando dados para aplicação do teste de regressão espacial
+
+## Filtrando dados da estação selecionada e suas vizinhas mais próximas
+EMA_data <- list()
+for (i in seq_along(EMA_dists$aux)) {
+  EMA_data[[i]] <-
+    var_data %>%
+    filter(site == EMA_dists$aux[i]) }
+EMA_data <- bind_rows(EMA_data)
+
+## Selecionando variável para análise
+EMA_data <-
+  EMA_data %>%
+  select(site, date, tavg)
+
+## Filtrando somente as 12:00 de cada dia
+EMA_data <-
+  EMA_data %>%
+  filter(hour(date) == 12)
+
+## Escolhendo determinado dia (22/09/2016, Equinócio de Primavera, HS)
+select_day <- as.Date("2016-09-22")
+
+## Selecionando um período de 15 dias antes e depois do dia escolhido
+EMA_data <-
+  EMA_data %>%
+  filter(as.Date(date) >= (select_day - 15) & as.Date(date) <= (select_day + 15))
+  # select_day - 15
+  # select_day
+  # select_day + 15
+
+## Verificando a disponibilidade dos dados dentro do período selecionado
+disp_period <-
+  EMA_data %>%
+  group_by(site) %>% 
+  summarise(
+    tot_all = length(tavg),
+    tot_na = sum(is.na(tavg)),
+    perc_na = (tot_na/tot_all) * 100)
+  ##disp_period
+
+## Verificando EMAs com menos de 50% de dados faltantes
+less50na <-
+  disp_period %>%
+  filter(perc_na < 50)
+
+## Selecionando EMAs com menos de 50% de dados faltantes dentro do período selecionado
+less50na_list <- list()
+for (i in seq_along(less50na$site)) {
+  less50na_list[[i]] <-
+    EMA_data %>%
+    filter(site == less50na$site[i]) }
+
+EMA_data <-
+  bind_rows(less50na_list) %>%
+  mutate(
+    hour = hour(date),
+    date = as.Date(date))
+
+## Deixando o data frame no formato do pdf
+EMA_data <-
+  spread(EMA_data, site, tavg) %>%
+  select(-hour) %>%
+  as.tibble()
+EMA_data
+
+```
+
+```{r}
+# Aplicando o teste de regressão espacial aos dados selecionados
+tab_long <-
+  EMA_data %>%
+  select(date:A883) %>%
+  gather(y, tempf, -c(A803, date))
+
+tab_by_station <-
+  tab_long %>%
+  group_by(y) %>%
+  nest()
+
+# função para o modelo de regressão
+reg_model <- function(df) {lm(A803 ~ tempf, data = df)}
+
+# calc regressão 
+tab_by_station <-
+  tab_by_station %>%
+  mutate(model = map(data, reg_model))
+
+# adicionando previsoes / ajustes
+tab_by_station <-
+  tab_by_station %>%
+  mutate(
+    pred = map2(data, model, add_predictions),    # x'
+    resid = map2(data, model, add_residuals)    # x - x'
+    )
+
+tab_previstos <- unnest(tab_by_station, pred)
+
+tab_glance <-
+  tab_by_station %>% 
+  mutate(glance = map(model, broom::glance)) %>% 
+  unnest(glance, .drop = TRUE)
+
+tab_by_station_norm <- tab_by_station %>%
+  select(y, pred) %>%
+  inner_join(., select(tab_glance, y, sigma)) %>%
+  unnest(pred) %>%
+  rename("xi" = pred) %>%
+  mutate(xi_norm = xi/sigma^2)
+
+tab_inv_sum_si2 <- sum(1/tab_glance$sigma^2)
+
+# num d estações vizinhas
+tab_N <- length(tab_glance$sigma)
+
+# constante: s', linha 36, coluna 13, da tab2
+tab_s_lin <- sqrt(tab_N/tab_inv_sum_si2)
+
+tab_resultado <-
+  select(tab_by_station_norm, y, date, xi_norm) %>%
+  mutate(
+    date = as.Date(date, "%m/%d/%Y"),
+    y = gsub("A","xi_norm_", y)) %>%
+  spread(y, xi_norm) %>%
+  mutate(
+    x_est = (xi_norm_812 + xi_norm_813 + xi_norm_826 + xi_norm_827 + xi_norm_833 + xi_norm_837 + xi_norm_853 + xi_norm_881 + xi_norm_883)/tab_inv_sum_si2)
+
+tab_resultado %>% as.tibble
+
+```
+
+
+
