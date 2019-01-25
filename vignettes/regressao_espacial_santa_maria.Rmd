@@ -47,12 +47,12 @@ dists
 A EMA de referência para teste será a A803, Santa Maria-RS, e suas 10 EMAs vizinhas mais próximas.
 
 ```{r}
-n_emas_prox <- 10
+M <- 10
 EMA_dists <-
   dists %>%
   filter(ref == "A803") %>%
   arrange(dis) %>% 
-  head(n_emas_prox + 1) # a própria ema inclusive
+  head(M + 1) # a própria ema inclusive
 EMA_dists
 
 ```
@@ -67,21 +67,29 @@ EMA_data <- filter(var_data, site %in% EMA_dists$aux) %>%
 Para um teste inicial selecionaremos apenas dados das 12 h. O método orinalmente foi aplicado a dados diários.
 
 ```{r}
-EMA_data <- EMA_data %>%
-  filter(hour(date) == 12)
+EMA_data <- EMA_data %>%  filter(hour(date) == 12)
 ```
 
 Para definir a janela de aplicação do método seleciou-se arbitrariamente o dia **22/09/2016**. O tamanho da janela em torno do dia de referência será de 15 dias antes e depois da data central.
 
 ```{r}
 select_day <- as.Date("2016-09-22")
+#select_day <- as.Date("2016-08-22")
 ## Selecionando um período de 15 dias antes e depois do dia escolhido
 EMA_data <-
   EMA_data %>%
-  filter(as.Date(date) >= (select_day - 15) & 
-           as.Date(date) <= (select_day + 15))
-EMA_data
-#unique(EMA_data$site)
+  filter(as.Date(date) >= (select_day - 30) & 
+           as.Date(date) <= (select_day + 30))
+
+```
+
+
+```{r, eval = FALSE}
+# for usar médias diárias
+EMA_data <- EMA_data %>%
+ group_by(site, date = as.Date(date)) %>%
+ summarise(tavg = mean(tavg, na.rm = TRUE)) #%>%  group_by(site) %>% tally()
+unique(EMA_data$site)
 ```
 
 
@@ -93,12 +101,13 @@ disp_period <-
   group_by(site) %>% 
   summarise(
     tot_all = n(),
-    tot_na = sum(!is.na(tavg)),
-    perc_na = (tot_na/tot_all) * 100) %>%
-  arrange(perc_na)
+    tot_valid = sum(!is.na(tavg)),
+    perc_valid = (tot_valid/tot_all) * 100) %>%
+  arrange(perc_valid)
+disp_period
 
 disp_gt_50 <- disp_period %>%
-  filter(perc_na > 50)
+  filter(perc_valid > 50)
 
 EMA_data <- EMA_data %>%
   filter(site %in% disp_gt_50$site)
@@ -108,14 +117,16 @@ EMA_data
 Estruturar dados no formato similar ao do exemplo de aplicação do método.
 
 ```{r}
+
 data_wide <-
   EMA_data %>%
   mutate(
-    hour = hour(date),
+    #hour = hour(date),
     date = as.Date(date)
     ) %>%
   spread(site, tavg) %>%
-  select(-hour) %>%
+  #select(-data) %>%
+  #select(-hour) %>%
   as.tibble()
 data_wide
 ```
@@ -134,7 +145,7 @@ names(data_wide)[2] <- "x"
 tab_by_station <-
   data_wide %>%
   #select(date:A883) %>%
-  gather(y, tempf, -c(x, date)) %>%
+  gather(y, y_val, -c(x, date)) %>%
   group_by(y) %>%
   nest()
 tab_by_station
@@ -144,8 +155,8 @@ Modelo de regressão
 
 ```{r}
 reg_model <- function(df) {
-  lm(x ~ tempf, data = df)
-  #lm(x ~ tempf, data = na.omit(df))
+  #lm(x ~ y_val, data = df)
+  lm(x ~ y_val, data = na.omit(df))
 }
 ```
 
@@ -160,7 +171,7 @@ tab_by_station[["model"]]
 ```
 
 
-Valores previstos.
+Valores previstos ou estimados de temperatura das EMAs vizinhas via regressão linear simples.
 
 ```{r}
 tab_by_station <-
@@ -174,53 +185,128 @@ tab_previstos
 summary(tab_previstos)
 ```
 
+Tabela anterior em formato wide para visualização similar a do artigo de referência do SRT.
+
+```{r}
+# tab_previstos no formato wide
+tab_previstos_wide <- 
+  tab_previstos %>% 
+  select(date, y, pred) %>% 
+  mutate(
+    date = as.Date(date, "%m/%d/%Y"),
+    y = gsub("y", "pred", y),
+    y = as.numeric(as.factor(y))) %>%
+  spread(y, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+tab_previstos_wide
+```
+
 Qualidade do ajuste das regressões.
 
 ```{r}
 tab_glance <-
   tab_by_station %>% 
   mutate(glance = map(model, broom::glance)) %>% 
-  unnest(glance, .drop = TRUE)
+  unnest(glance, .drop = TRUE) %>%
+  arrange(sigma)
 tab_glance
+r2.threshold <- 0.55
+tab_glance_sel <- filter(tab_glance, r.squared > r2.threshold)
+(N <- nrow(tab_glance_sel))
+```
+
+INSERIR FILTRAGEM DE DADOS MANTENDO SOMENTE DADOS PARA AS EMAS DA TABELA ACIMA
+tab_glance_sel.
+
+```{r, eval = FALSE}
+tab_by_station_sel <- tab_by_station
+tab_by_station_norm_sel <- tab_by_station_norm
+tab_previstos_wide_sel <- tab_previstos_wide
+data_wide_sel <- data_wide
 ```
 
 
+```{r}
+#Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$.
+tab_glance %>%
+  ggplot(aes(x = r.squared, y = sigma)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
+  theme_bw()
+```
+
+
+Termos necessários para equação 5 de Hubbard et al. 2012.
+
+```{r}
+# lado direito da eq. 5
+inv_sum_si2 <- sum(1/tab_glance$sigma^2)
+
+# num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab_N <- length(tab_glance$sigma)
+
+# constante: s', linha 36, coluna 13, da tab2
+# obtida isolando s' na eq. 5 
+s_lin <- sqrt(tab_N/inv_sum_si2)
+s_lin
+```
+
+
+Normalização das temperaturas previstas para as EMAs vizinhas. Numerador da equação 4 de Hubbard et al. 2012.
 
 ```{r}
 tab_by_station_norm <- tab_by_station %>%
   select(y, pred) %>%
-  inner_join(., select(tab_glance, y, sigma)) %>%
+  inner_join(., select(tab_glance, y, sigma), by = "y") %>%
   unnest(pred) %>%
-  rename("xi" = pred) %>%
-  mutate(xi_norm = xi/sigma^2)
+  rename("xlim" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlim_norm = xlim/sigma^2)
 tab_by_station_norm
 ```
 
+Colocando temperaturas previstas normalizadas no formato wide.
 
 ```{r}
-inv_sum_si2 <- sum(1/tab_glance$sigma^2)
-
-# num d estações vizinhas
-tab_N <- length(tab_glance$sigma)
-
-# constante: s', linha 36, coluna 13, da tab2
-tab_s_lin <- sqrt(tab_N/tab_inv_sum_si2)
-
-
-tab_resultado <- select(tab_by_station_norm, y, date, xi_norm) %>%
+tab_by_station_norm_wide <- tab_by_station_norm %>%
+  select(y, date, xlim_norm) %>%
   mutate(
-    date = as.Date(date, "%m/%d/%Y"),
-    # para não confundir a cabeça
-    y = gsub("y", "xi_norm", y),
+    # ao invés dos códigos das EMAs utilizaremos um num sequencial
     y = as.numeric(as.factor(y))
   ) %>%
-  spread(y, xi_norm) %>%
-  setNames(c("date", paste0("xi_norm", names(.)[-1]))) %>%
-  mutate(x_est = rowSums(select(., -1)) / inv_sum_si2)
-
-tab_resultado 
-
+  spread(y, xlim_norm) %>%
+  setNames(c("date", paste0("xlim_norm", names(.)[-1])))
+tab_by_station_norm_wide
 ```
+
+
+Tabela com a a estimativa final da temperatura para a EMA alvo, obtida pela média ponderada das regressões com as EMAs vizinhas.
+
+```{r}
+tab_resultado <- tab_by_station_norm_wide %>%
+  # x(est) estimativa não-viesada
+  mutate(x_est = rowSums(select(., -1)) / inv_sum_si2,
+         # contar EMAs vizinhas com obs válidas
+         n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)
+         ) %>%
+  right_join(tab_previstos_wide, ., by = 'date') %>%
+  right_join(data_wide, ., by = 'date') %>%
+  mutate(vies = x - x_est)
+tab_resultado
+```
+
+Verificação Viés
+
+```{r}
+# verificando viés
+select(tab_resultado, x, x_est, vies)
+#mean(tab_resultado$vies, na.rm = TRUE)
+sum(tab_resultado$vies, na.rm = TRUE)
+hydroGOF::gof(tab_resultado$x_est, tab_resultado$x)
+```
+
+
 
 
 
