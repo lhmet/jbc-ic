@@ -1,0 +1,375 @@
+---
+title: Implementação do teste de QC espacial
+output: html_notebook
+---
+
+# Pré-configurações
+
+```{r}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(c("tidyverse", "ggfortify", "lubridate", "modelr"))
+
+# Carregando scripts necessários
+source("../R/network-dists.R")
+source("../R/utils.R")
+```
+
+# Constantes usadas ao longo das equações
+```{r}
+REF = "A803" # EMA de referência
+#REF = "A812" # EMA de referência
+M = 10 # Número original de EMAs
+VAR = "tavg" # Variável a ser testada
+TYPE = "hourly" # Caso o teste seja feito para dados horários
+#TYPE = "daily" # Caso o teste seja feito para dados diários (média)
+hourly_HOUR = 12 # Hora de referência utilizada nos dados horários
+hourly_DAY = "2016-09-22" # Dia de referência utilizado nos dados horários
+#hourly_DAY = "2016-08-22" # Dia utilizado nos dados horários
+hourly_INTERVAL = 30 # Intervalo de tempo, dias antes e depois do dia de referência
+PERC_REF = 50 # Percentagem de dados válidos aceita (maior ou igual)
+R2_THRESHOLD = 0.55 # limiar do coeficiente de determinação 
+# (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
+f <- 3 # fator do intervalo de confiança
+```
+
+# Dados
+
+Como foi gerado estes dados.
+
+```{r}
+(var_data <- rio::import("../output/s08_data_sel.rds") %>% as_tibble)
+```
+
+Metadados das EMA.
+
+```{r}
+(var_info <- rio::import("../output/summary_80.rds") %>% as_tibble)
+```
+
+# Cálculo de distâncias
+
+```{r}
+dists <- network_dists(
+  netw_ref = var_info,
+  netw_aux = var_info, 
+  dx_max = NA,
+  lon_lat = TRUE)
+dists
+```
+
+A EMA de referência para teste será a A803, Santa Maria-RS, e suas 10 EMAs vizinhas mais próximas.
+
+```{r}
+ema_dists <-
+  dists %>%
+  filter(ref == REF) %>%
+  arrange(dis) %>%
+  head(M + 1) # a própria ema inclusive
+ema_dists
+```
+
+Seleção de dados da EMA selecionada e suas vizinhas.
+
+```{r}
+data_rename <-
+      var_data %>%
+      rename("var" = VAR)
+ema_data <-
+  data_rename %>%
+  filter(site %in% ema_dists$aux) %>%
+  select(site, date, var)
+ema_data
+```
+
+Escolha do tipo de dado analisado, horário ou diário
+
+No caso horário, para definir a janela de aplicação do método seleciou-se arbitrariamente o dia **22/09/2016**. O tamanho da janela em torno do dia de referência será de 30 dias antes e depois da data central.
+
+```{r}
+if (TYPE == "hourly") {
+  ema_data_if <-
+    ema_data %>%
+    filter(hour(date) == hourly_HOUR)
+  ema_data_if <-
+    ema_data_if %>%
+    ## Selecionando um período de 15 dias antes e depois do dia escolhido
+    filter(
+      as.Date(date) >= (as.Date(hourly_DAY) - hourly_INTERVAL) & 
+      as.Date(date) <= (as.Date(hourly_DAY) + hourly_INTERVAL))
+  }
+```
+
+Para o caso diário, foi feita a média aritmética simples dos 24 valores horários da variável testada, resultando em um único valor diário
+
+```{r}
+if (TYPE == "daily") {
+  ema_data_if <-
+    ema_data %>%
+    group_by(
+      site,
+      date = as.Date(date)) %>%
+    summarise(
+      var = mean(var, na.rm = TRUE)) %>% #group_by(site) %>% tally() %>%
+    ungroup()
+  } # sem NA nos dados
+```
+
+Vamos verificar a disponibilidade dos dados selecionados. Mantém-se somente EMAs com mais de 50% de dados válidos.
+
+```{r}
+disp_period <-
+  ema_data_if %>%
+  group_by(site) %>% 
+  summarise(
+    tot_all = n(),
+    tot_valid = sum(!is.na(var)),
+    perc_valid = (tot_valid/tot_all) * 100) %>%
+  arrange(perc_valid)
+disp_period
+
+disp_gt_50 <-
+  disp_period %>%
+  filter(perc_valid >= PERC_REF)
+
+ema_data <-
+  ema_data_if %>% 
+  filter(site %in% disp_gt_50$site)
+ema_data
+```
+
+Estruturar dados no formato similar ao do exemplo de aplicação do método. O formato dos dados é com a data na 1ª coluna, a EMA de referência na 2ª coluna e as EMAs vizinhas nas demais colunas.
+
+```{r}
+data_wide <-
+  ema_data %>%
+  mutate(date = as.Date(date)) %>%
+  spread(site, var) %>%
+  rename("x" = REF) %>%
+  as.tibble()
+data_wide
+```
+
+# Aplicação do teste
+
+Modelo de regressão
+
+```{r}
+reg_model <- function(df) {lm(x ~ y, data = df, na.action = na.exclude)}
+#reg_model <- function(df) {lm(x ~ y, data = na.omit(df))}
+```
+
+Aplicando a regressão entre a EMA de referência e cada EMA vizinha.
+
+```{r}
+tab_by_station <-
+  data_wide %>%
+  # id: identificador das EMAs, y: valores da variável nas EMAs vizinhas
+  gather(id, y, -c(x, date)) %>%
+  group_by(id) %>%
+  nest() %>%
+  mutate(model = map(data, reg_model)) %>%
+  mutate(
+    pred = map2(data, model, add_predictions),  # x'
+    resid = map2(data, model, add_residuals))   # x - x'
+tab_by_station
+
+tab_by_station[["model"]]
+```
+
+Valores previstos ou estimados de temperatura das EMAs vizinhas via regressão linear simples.
+
+```{r}
+tab_previstos <- unnest(tab_by_station, pred)
+tab_previstos
+
+summary(tab_previstos)
+```
+
+Tabela anterior em formato wide para visualização similar a do artigo de referência do SRT.
+
+```{r}
+tab_previstos_wide <- 
+  tab_previstos %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+tab_previstos_wide
+```
+
+Qualidade do ajuste das regressões.
+
+```{r}
+tab_glance <-
+  tab_by_station %>%
+  mutate(glance = map(model, broom::glance)) %>% 
+  unnest(glance, .drop = TRUE) %>%
+  arrange(sigma)
+
+tab_glance_sel <-
+  tab_glance %>%
+  filter(adj.r.squared > R2_THRESHOLD)
+tab_glance_sel
+
+(N <- nrow(tab_glance_sel))
+
+```
+
+Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$.
+
+```{r}
+tab_glance_sel %>%
+  ggplot(aes(x = adj.r.squared, y = sigma)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
+  theme_bw()
+```
+
+Termos necessários para equação 5 de Hubbard et al. 2012.
+
+```{r}
+# lado direito da eq. 5
+inv_sum_si2 <- sum(1/tab_glance_sel$sigma^2)
+
+# num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab_N <- length(tab_glance_sel$sigma)
+
+# constante: s', linha 36, coluna 13, da tab2
+# obtida isolando s' na eq. 5
+slin <- sqrt(tab_N/inv_sum_si2)
+```
+
+Vamos filtrar os dados gerados anteriormente mantendo somente as EMAs selecionadas.
+
+```{r}
+data_wide_sel <-
+  data_wide %>%
+  select(c("date", "x", tab_glance_sel$id))
+data_wide_sel
+
+tab_by_station_sel <-
+  tab_by_station %>%
+  filter(id %in% tab_glance_sel$id)
+tab_by_station_sel
+
+tab_previstos_sel <-
+  tab_previstos %>%
+  filter(id %in% tab_glance_sel$id)
+tab_previstos_sel
+
+tab_previstos_wide_sel <- 
+  tab_previstos_sel %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+tab_previstos_wide_sel
+```
+
+Normalização das temperaturas previstas para as EMAs vizinhas. Numerador da equação 4 de Hubbard et al. 2012.
+
+```{r}
+tab_by_station_norm_sel <-
+  tab_by_station_sel %>%
+  select(id, pred) %>%
+  inner_join(., select(tab_glance, id, sigma), by = "id") %>%
+  unnest(pred) %>%
+  rename("xlin" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlim_norm = xlin/sigma^2)
+tab_by_station_norm_sel
+```
+
+Colocando temperaturas previstas normalizadas no formato wide.
+
+```{r}
+tab_by_station_norm_wide_sel <-
+  tab_by_station_norm_sel %>%
+  select(id, date, xlim_norm) %>%
+  # ao invés dos códigos das EMAs utilizaremos um num sequencial
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, xlim_norm) %>%
+  setNames(c("date", paste0("xlim_norm", names(.)[-1])))
+tab_by_station_norm_wide_sel
+```
+
+Tabela com a a estimativa final da temperatura para a EMA alvo, obtida pela média ponderada do erro padrão das regressões com as EMAs vizinhas.
+
+```{r}
+tab_resultado_ok <-
+  tab_by_station_norm_wide_sel %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab_glance_sel$sigma[!is.na(x)]^2))
+
+ tab_resultado_1 <-
+  tab_by_station_norm_wide_sel %>%
+   select(., -1) %>%
+   apply(., 1, function(x) sum(x[!is.na(x)]) / inv_sum_si2)
+
+#sum(1/tab_glance_sel$sigma[]^2)
+
+
+tab_resultado <- tab_by_station_norm_wide_sel %>%
+  mutate(
+    #x01 = tab_resultado_1
+    x_est = rowSums(select(., -1)) / inv_sum_si2,
+    x_est_2 = tab_resultado_ok,
+    x_est_3 = tab_resultado_1,
+    n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)) %>%
+  right_join(tab_previstos_wide_sel, ., by = 'date') %>%
+  right_join(data_wide_sel, ., by = 'date') %>%
+  mutate(vies = x - x_est,
+         vies2 = x - x_est_2,
+         vies3 = x - x_est_3)
+  
+tab_resultado
+```
+
+Verificação Viés
+
+```{r}
+select(tab_resultado, x, x_est, vies)
+#mean(tab_resultado$vies, na.rm = TRUE)
+sum(tab_resultado$vies, na.rm = TRUE)
+sum(tab_resultado$vies2, na.rm = TRUE)
+sum(tab_resultado$vies3, na.rm = TRUE)
+hydroGOF::gof(tab_resultado$x_est, tab_resultado$x)
+```
+
+Verificação de que a observação caia no intervalo de confiança da estimativa pela regressão linear.
+
+```{r}
+slin
+f <- 2.5
+tab_susp <- 
+tab_resultado %>%
+  mutate(
+    #lower = x_est - f*slin, upper = x_est + f*slin,
+    lower = x_est_2 - f*slin, upper = x_est_2 + f*slin,
+    suspect = !(x >= lower &  x <= upper)
+  ) %>%
+  select(date, x, x_est, lower, upper, suspect, x_est_2)
+tab_susp
+```
+
+
+```{r}
+tab_susp %>%
+  ggplot(aes(x = date, y = x)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(colour = "red") +
+  geom_line(aes(x = date, y = x_est_2)) +
+  theme_bw()
+  
+  
+```
+
+
+> Replicar este Rmd para os 2 exemplos do livro para analisar o efeito no viés
+das diferentes estimativas da regressão.
+
+
