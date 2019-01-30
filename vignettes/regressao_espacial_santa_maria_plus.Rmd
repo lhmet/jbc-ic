@@ -23,12 +23,12 @@ REF = "A803" # EMA de referência
 #REF = "A812" # EMA de referência
 M = 10 # Número original de EMAs
 VAR = "tavg" # Variável a ser testada
-TYPE = "hourly" # Caso o teste seja feito para dados horários
-#TYPE = "daily" # Caso o teste seja feito para dados diários (média)
+#TYPE = "hourly" # Caso o teste seja feito para dados horários
+TYPE = "daily" # Caso o teste seja feito para dados diários (média)
 hourly_HOUR = 12 # Hora de referência utilizada nos dados horários
 hourly_DAY = "2016-09-22" # Dia de referência utilizado nos dados horários
 #hourly_DAY = "2016-08-22" # Dia utilizado nos dados horários
-hourly_INTERVAL = 30 # Intervalo de tempo, dias antes e depois do dia de referência
+hourly_INTERVAL = 15 # Intervalo de tempo, dias antes e depois do dia de referência
 PERC_REF = 50 # Percentagem de dados válidos aceita (maior ou igual)
 R2_THRESHOLD = 0.55 # limiar do coeficiente de determinação 
 # (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
@@ -108,6 +108,10 @@ Para o caso diário, foi feita a média aritmética simples dos 24 valores horá
 if (TYPE == "daily") {
   ema_data_if <-
     ema_data %>%
+     ## Selecionando um período de 15 dias antes e depois do dia escolhido
+    filter(
+      as.Date(date) >= (as.Date(hourly_DAY) - hourly_INTERVAL) & 
+      as.Date(date) <= (as.Date(hourly_DAY) + hourly_INTERVAL)) %>%
     group_by(
       site,
       date = as.Date(date)) %>%
@@ -344,7 +348,7 @@ Verificação de que a observação caia no intervalo de confiança da estimativ
 
 ```{r}
 slin
-f <- 2.5
+#f <- 3
 tab_susp <- 
 tab_resultado %>%
   mutate(
@@ -356,6 +360,7 @@ tab_resultado %>%
 tab_susp
 ```
 
+Gráfico da série temporal das observações, estimativas e IC.
 
 ```{r}
 tab_susp %>%
@@ -364,12 +369,26 @@ tab_susp %>%
   geom_point(colour = "red") +
   geom_line(aes(x = date, y = x_est_2)) +
   theme_bw()
-  
-  
 ```
 
 
-> Replicar este Rmd para os 2 exemplos do livro para analisar o efeito no viés
-das diferentes estimativas da regressão.
+Gráfico de dispersão das observações e estimativas.
+
+
+```{r}
+library(ggpmisc)
+formula <- y ~ x
+
+tab_susp %>%
+  ggplot(aes(x = x, y = x_est_2)) +
+  geom_point(colour = "red") +
+  coord_equal() +
+  geom_smooth(method = "lm", formula = formula) +
+  stat_poly_eq(aes(label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+               formula = formula, 
+               parse = TRUE, ) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+```
 
 
