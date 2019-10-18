@@ -42,6 +42,16 @@ fun_NA <- function(x, fun, ...){
 }
 
 
+n_valid <- function(x) sum(!is.na(x))
+
+percent_valid <- function(x, N = NULL) {
+  if (is.null(N)) return(n_valid(x)/length(x) * 100)
+  
+  n_valid(x)/N * 100
+}
+
+check_firstNA <- function(x) !is.na(first(x))
+
 replace_NA <- function(x, fill.value = 0) {
   #x <- summary_qc_j$tot
   replace(x, is.na(x), fill.value)

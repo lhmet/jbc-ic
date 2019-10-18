@@ -1,0 +1,813 @@
+---
+title: Aplicação do teste de QC espacial para os exemplos do livro
+output: html_notebook
+---
+
+# Pré-configurações
+
+```{r}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(c("tidyverse", "ggfortify", "lubridate", "modelr", "broom"))
+
+# Carregando scripts necessários
+source("../R/network-dists.R")
+source("../R/utils.R")
+```
+
+# Constantes usadas ao longo das equações
+```{r}
+R2_THRESHOLD <- 0.55 # limiar do coeficiente de determinação
+# (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
+f <- 3 # fator do intervalo de confiança
+```
+
+# Dados
+
+```{r}
+tab2 <-
+  rio::import("../data/data-table2-Hubbard2012-Cap1-BookPractConcepQC.txt") %>% 
+  select(days:y4) %>% 
+  mutate(days = as.Date(days, format("%m/%d/%Y"))) %>% 
+  rename('date' = 'days') %>% 
+  arrange(date) %>% 
+  as_tibble
+tab2
+
+tab3 <-
+  rio::import("../data/data-table3-Hubbard2012-Cap1-BookPractConcepQC.txt") %>%
+  select(days:y4) %>%
+  mutate(days = as.Date(days, format("%m/%d/%Y"))) %>%
+  rename('date' = 'days') %>%
+  arrange(date) %>%
+  as_tibble
+tab3
+```
+
+# Aplicação da SRT
+
+Modelo de regressão
+
+```{r}
+reg_model <- function(df) {lm(x ~ y, data = df, na.action = na.exclude)}
+#reg_model <- function(df) {lm(x ~ y, data = na.omit(df))}
+```
+
+Aplicando a regressão entre a EMA de referência (x) e cada EMA vizinha (yi).
+
+```{r}
+# Tabela 2
+tab2_by_station <-
+  tab2 %>%
+  # id: identificador das EMAs, y: valores da variável nas EMAs vizinhas
+  gather(id, y, -c(x, date)) %>%
+  group_by(id) %>%
+  nest() %>%
+  mutate(model = map(data, reg_model)) %>%
+  mutate(
+    pred = map2(data, model, add_predictions),  # x'
+    resid = map2(data, model, add_residuals))   # x - x'
+tab2_by_station
+
+tab2_by_station[["model"]]
+
+# Tabela 3
+tab3_by_station <-
+  tab3 %>%
+  # id: identificador das EMAs, y: valores da variável nas EMAs vizinhas
+  gather(id, y, -c(x, date)) %>%
+  group_by(id) %>%
+  nest() %>%
+  mutate(model = map(data, reg_model)) %>%
+  mutate(
+    pred = map2(data, model, add_predictions),  # x'
+    resid = map2(data, model, add_residuals))   # x - x'
+tab3_by_station
+
+tab3_by_station[["model"]]
+```
+
+Valores previstos ou estimados de temperatura das EMAs vizinhas via regressão linear simples.
+
+```{r}
+# Tabela 2
+(tab2_previstos <- unnest(tab2_by_station, pred))
+summary(tab2_previstos)
+
+# Tabela 3
+(tab3_previstos <- unnest(tab3_by_station, pred))
+summary(tab3_previstos)
+```
+
+Tabela anterior em formato wide para visualização similar a do artigo de referência do SRT.
+
+```{r}
+# Tabela 2
+tab2_previstos_wide <- 
+  tab2_previstos %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+tab2_previstos_wide
+
+# Tabela 3
+tab3_previstos_wide <- 
+  tab3_previstos %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+tab3_previstos_wide
+```
+
+## Qualidade do ajuste das regressões.
+
+```{r}
+# Tabela 2
+tab2_glance <-
+  tab2_by_station %>%
+  mutate(glance = map(model, broom::glance)) %>% 
+  unnest(glance, .drop = TRUE) # %>% arrange(sigma)
+
+tab2_glance_sel <-
+  tab2_glance %>%
+  filter(adj.r.squared > R2_THRESHOLD)
+tab2_glance_sel
+
+(tab2_N <- nrow(tab2_glance_sel))
+
+# Tabela 3
+tab3_glance <-
+  tab3_by_station %>%
+  mutate(glance = map(model, broom::glance)) %>% 
+  unnest(glance, .drop = TRUE) # %>% arrange(sigma)
+
+tab3_glance_sel <-
+  tab3_glance %>%
+  filter(adj.r.squared > R2_THRESHOLD)
+tab3_glance_sel
+
+(tab3_N <- nrow(tab3_glance_sel))
+
+```
+
+## Erro padrão da regressão 
+
+Adicionando novos valores para sigma
+
+```{r}
+# Tabela 2
+tab2_reg <- tab2_by_station[["model"]]
+
+tab2_prev_reg <- list()
+for (i in seq_along(tab2_reg)) {
+  tab2_prev_reg[[i]] <- augment(tab2_reg[[i]])}
+
+
+tab2_sigma_book <- c(1.349, 0.954, 0.706, 0.694)
+
+tab2_sigma_eq1 <- list()
+for (i in seq_along(tab2_reg)) {
+  # i <- 1
+  tab2_sigma_eq1[[i]] <- round(
+    summary(tab2_reg[[i]])[["sigma"]] * summary(tab2_reg[[i]])[["r.squared"]], 
+    digits = 7
+    ) 
+  }
+tab2_sigma_eq1 <- tab2_sigma_eq1 %>% unlist()
+tab2_sigma_eq1
+```
+
+
+```{r}
+
+# antepenúltima equação em http://onlinestatbook.com/2/regression/accuracy.html
+# The only difference is that the denominator is N-2 rather than N.
+# The reason N-2 is used rather than N-1 is that two parameters
+# (the slope and the intercept) were estimated in order to estimate the sum
+# of squares.
+
+# como vimos que a equação do link bate com os resultados R, testaremos 
+# para a equação do Erro Padrão calc. pelo excel.
+# https://support.office.com/en-us/article/steyx-function-6ce74b2c-449d-4a6e-b9ac-f9cef5ba48ab
+
+tab2_sigma_eq2 <- list()
+for (i in seq_along(tab2_prev_reg)) {
+  # i <- 1
+  tab2_sigma_eq2[[i]] <-
+    with(
+      tab2_prev_reg[[i]],
+      #round(sqrt(sum((.fitted - x)^2)/(length(x) - (tab2_glance_sel$df)[i])), 7))
+      round(
+        sqrt(
+          (1/(nrow(tab2_prev_reg[[i]])-2)) * 
+            (
+               sum((x - mean(x, na.rm = TRUE))^2) -
+              ((sum((y - mean(y, na.rm = TRUE))*(x - mean(x, na.rm = TRUE))))^2)/
+                sum((y - mean(y, na.rm = TRUE))^2)
+            )
+        )
+      , digits = 3
+      )
+    )
+  }
+tab2_sigma_eq2 <- tab2_sigma_eq2 %>% unlist()
+
+tab2_glance_sel_book <-
+  tab2_glance_sel %>%
+  mutate(
+    sigma_book = tab2_sigma_book,
+    sigma_eq1 = tab2_sigma_eq1,
+    sigma_eq2 = tab2_sigma_eq2) %>%
+  select(id:sigma, sigma_book, sigma_eq1, sigma_eq2, everything())
+tab2_glance_sel_book
+```
+
+
+
+```{r}
+# Tabela 3
+tab3_reg <- tab3_by_station[["model"]]
+
+tab3_prev_reg <- list()
+for (i in seq_along(tab3_reg)) {
+  tab3_prev_reg[[i]] <- augment(tab3_reg[[i]])}
+
+tab3_sigma_eq1 <- list()
+for (i in seq_along(tab3_reg)) {
+  tab3_sigma_eq1[[i]] <- round(summary(tab3_reg[[i]])[[6]] * summary(tab3_reg[[i]])[[8]], 7) }
+tab3_sigma_eq1 <- tab3_sigma_eq1 %>% unlist()
+  
+tab3_sigma_eq2 <- list()
+for (i in seq_along(tab3_prev_reg)) {
+  tab3_sigma_eq2[[i]] <-
+    with(
+      tab3_prev_reg[[i]],
+      round(sqrt(sum((.fitted - x)^2)/(length(x) - (tab3_glance_sel$df)[i])), 7)) }
+tab3_sigma_eq2 <- tab3_sigma_eq2 %>% unlist()
+
+tab3_glance_sel_book <-
+  tab3_glance_sel %>%
+  mutate(
+    sigma_eq1 = tab3_sigma_eq1,
+    sigma_eq2 = tab3_sigma_eq2) %>%
+  select(id:sigma, sigma_eq1, sigma_eq2, everything())
+tab3_glance_sel_book
+
+### Nota: 'sigma_eq2' = 'sigma'
+### Nota: para diferenciar, será utilizado 'BOOK', nos scripts onde foram usados os valores do livro
+### Foi usado o comando 'for', verificar uma forma mais eficiente
+```
+
+Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$.
+
+```{r}
+# Tabela 2
+tab2_glance_sel %>%
+  ggplot(aes(x = adj.r.squared, y = sigma)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
+  theme_bw()
+
+# Tabela 3
+tab3_glance_sel %>%
+  ggplot(aes(x = adj.r.squared, y = sigma)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
+  theme_bw()
+```
+
+Termos necessários para equação 5 de Hubbard et al. 2012.
+
+```{r}
+# Tabela 2
+## lado direito da eq. 5
+tab2_inv_sum_si2 <- sum(1/tab2_glance_sel$sigma^2)
+## num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab2_N <- length(tab2_glance_sel$sigma)
+## constante: s', linha 36, coluna 13, da tab2
+## obtida isolando s' na eq. 5
+tab2_slin <- sqrt(tab2_N/tab2_inv_sum_si2)
+
+# Tabela 3
+## lado direito da eq. 5
+tab3_inv_sum_si2 <- sum(1/tab3_glance_sel$sigma^2)
+## num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab3_N <- length(tab3_glance_sel$sigma)
+## constante: s', linha 36, coluna 13, da tab2
+## obtida isolando s' na eq. 5
+tab3_slin <- sqrt(tab3_N/tab3_inv_sum_si2)
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+## lado direito da eq. 5
+tab2_inv_sum_si2_book <- sum(1/tab2_glance_sel_book$sigma_book^2)
+## num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab2_N_book <- length(tab2_glance_sel_book$sigma_book)
+## constante: s', linha 36, coluna 13, da tab2
+## obtida isolando s' na eq. 5
+tab2_slin_book <- sqrt(tab2_N_book/tab2_inv_sum_si2_book)
+
+# Tabela 3
+## lado direito da eq. 5
+tab3_inv_sum_si2_book <- sum(1/tab3_glance_sel_book$sigma_eq1^2)
+## num d estações vizinhas - numerador do lado esquerdo da eq. 5
+tab3_N_book <- length(tab3_glance_sel_book$sigma_eq1)
+## constante: s', linha 36, coluna 13, da tab2
+## obtida isolando s' na eq. 5
+tab3_slin_book <- sqrt(tab3_N_book/tab3_inv_sum_si2_book)
+
+### Nota: na tabela 3 não constava os valores de sigma como na tabela 2, então serão usados os valores gerados pela equação 1 (sigma_eq1)
+```
+
+
+Vamos filtrar os dados gerados anteriormente mantendo somente as EMAs selecionadas.
+
+```{r}
+# Tabela 2
+tab2_sel <- tab2 %>% select(c("date", "x", tab2_glance_sel$id))
+tab2_by_station_sel <- tab2_by_station %>% filter(id %in% tab2_glance_sel$id)
+tab2_previstos_sel <- tab2_previstos %>% filter(id %in% tab2_glance_sel$id)
+tab2_previstos_wide_sel <- 
+  tab2_previstos_sel %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+
+tab2_sel; tab2_by_station_sel; tab2_previstos_sel; tab2_previstos_wide_sel
+
+# Tabela 3
+tab3_sel <- tab3 %>% select(c("date", "x", tab3_glance_sel$id))
+tab3_by_station_sel <- tab3_by_station %>% filter(id %in% tab3_glance_sel$id)
+tab3_previstos_sel <- tab3_previstos %>% filter(id %in% tab3_glance_sel$id)
+tab3_previstos_wide_sel <- 
+  tab3_previstos_sel %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+
+tab3_sel; tab3_by_station_sel; tab3_previstos_sel; tab3_previstos_wide_sel
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_sel_book <- tab2 %>% select(c("date", "x", tab2_glance_sel_book$id))
+tab2_by_station_sel_book <- tab2_by_station %>% filter(id %in% tab2_glance_sel_book$id)
+tab2_previstos_sel_book <- tab2_previstos %>% filter(id %in% tab2_glance_sel_book$id)
+tab2_previstos_wide_sel_book <- 
+  tab2_previstos_sel_book %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+
+tab2_sel_book; tab2_by_station_sel_book; tab2_previstos_sel_book; tab2_previstos_wide_sel_book
+
+# Tabela 3
+tab3_sel_book <- tab3 %>% select(c("date", "x", tab3_glance_sel_book$id))
+tab3_by_station_sel_book <- tab3_by_station %>% filter(id %in% tab3_glance_sel_book$id)
+tab3_previstos_sel_book <- tab3_previstos %>% filter(id %in% tab3_glance_sel_book$id)
+tab3_previstos_wide_sel_book <- 
+  tab3_previstos_sel_book %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+
+tab3_sel_book; tab3_by_station_sel_book; tab3_previstos_sel_book; tab3_previstos_wide_sel_book
+``` 
+
+Normalização das temperaturas previstas para as EMAs vizinhas. Numerador da equação 4 de Hubbard et al. 2012.
+
+```{r}
+# Tabela 2
+tab2_by_station_norm_sel <-
+  tab2_by_station_sel %>%
+  select(id, pred) %>%
+  inner_join(., select(tab2_glance_sel, id, sigma), by = "id") %>%
+  unnest(pred) %>%
+  rename("xlin" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlin_norm = xlin/sigma^2)
+tab2_by_station_norm_sel
+
+# Tabela 3
+tab3_by_station_norm_sel <-
+  tab3_by_station_sel %>%
+  select(id, pred) %>%
+  inner_join(., select(tab3_glance_sel, id, sigma), by = "id") %>%
+  unnest(pred) %>%
+  rename("xlin" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlin_norm = xlin/sigma^2)
+tab3_by_station_norm_sel
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_by_station_norm_sel_book <-
+  tab2_by_station_sel_book %>%
+  select(id, pred) %>%
+  inner_join(., select(tab2_glance_sel_book, id, sigma_book), by = "id") %>%
+  unnest(pred) %>%
+  rename("xlin" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlin_norm = xlin/sigma_book^2)
+tab2_by_station_norm_sel_book
+
+# Tabela 3
+tab3_by_station_norm_sel_book <-
+  tab3_by_station_sel_book %>%
+  select(id, pred) %>%
+  inner_join(., select(tab3_glance_sel_book, id, sigma_eq1), by = "id") %>%
+  unnest(pred) %>%
+  rename("xlin" = pred) %>%
+  # numerador da eq. 4
+  mutate(xlin_norm = xlin/sigma_eq1^2)
+tab3_by_station_norm_sel_book
+```
+
+
+Colocando temperaturas previstas normalizadas no formato wide.
+
+```{r}
+# Tabela 2
+tab2_by_station_norm_wide_sel <-
+  tab2_by_station_norm_sel %>%
+  select(id, date, xlin_norm) %>%
+  # ao invés dos códigos das EMAs utilizaremos um num sequencial
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, xlin_norm) %>%
+  setNames(c("date", paste0("xlin_norm", names(.)[-1])))
+tab2_by_station_norm_wide_sel
+
+# Tabela 3
+tab3_by_station_norm_wide_sel <-
+  tab3_by_station_norm_sel %>%
+  select(id, date, xlin_norm) %>%
+  # ao invés dos códigos das EMAs utilizaremos um num sequencial
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, xlin_norm) %>%
+  setNames(c("date", paste0("xlin_norm", names(.)[-1])))
+tab3_by_station_norm_wide_sel
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_by_station_norm_wide_sel_book <-
+  tab2_by_station_norm_sel_book %>%
+  select(id, date, xlin_norm) %>%
+  # ao invés dos códigos das EMAs utilizaremos um num sequencial
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, xlin_norm) %>%
+  setNames(c("date", paste0("xlin_norm", names(.)[-1])))
+tab2_by_station_norm_wide_sel_book
+
+# Tabela 3
+tab3_by_station_norm_wide_sel_book <-
+  tab3_by_station_norm_sel_book %>%
+  select(id, date, xlin_norm) %>%
+  # ao invés dos códigos das EMAs utilizaremos um num sequencial
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, xlin_norm) %>%
+  setNames(c("date", paste0("xlin_norm", names(.)[-1])))
+tab3_by_station_norm_wide_sel_book
+```
+
+Tabela com a a estimativa final da temperatura para a EMA alvo, obtida pela média ponderada do erro padrão das regressões com as EMAs vizinhas.
+
+```{r}
+# Tabela 2
+tab2_resultado_ok <-
+  tab2_by_station_norm_wide_sel %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab2_glance_sel$sigma[!is.na(x)]^2))
+
+tab2_resultado_1 <-
+  tab2_by_station_norm_wide_sel %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / tab2_inv_sum_si2)
+
+  #sum(1/tab2_glance_sel$sigma[]^2)
+
+tab2_resultado <-
+  tab2_by_station_norm_wide_sel %>%
+  mutate(
+    #x01 = tab_resultado_1
+    x_est = rowSums(select(., -1)) / tab2_inv_sum_si2,
+    x_est_2 = tab2_resultado_ok,
+    x_est_3 = tab2_resultado_1,
+    n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)) %>%
+  right_join(tab2_previstos_wide_sel, ., by = 'date') %>%
+  right_join(tab2_sel, ., by = 'date') %>%
+  mutate(vies = x - x_est,
+         vies2 = x - x_est_2,
+         vies3 = x - x_est_3)
+tab2_resultado
+
+# Tabela 3
+tab3_resultado_ok <-
+  tab3_by_station_norm_wide_sel %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab3_glance_sel$sigma[!is.na(x)]^2))
+
+tab3_resultado_1 <-
+  tab3_by_station_norm_wide_sel %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / tab3_inv_sum_si2)
+
+  #sum(1/tab3_glance_sel$sigma[]^2)
+
+tab3_resultado <-
+  tab3_by_station_norm_wide_sel %>%
+  mutate(
+    #x01 = tab_resultado_1
+    x_est = rowSums(select(., -1)) / tab3_inv_sum_si2,
+    x_est_2 = tab3_resultado_ok,
+    x_est_3 = tab3_resultado_1,
+    n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)) %>%
+  right_join(tab3_previstos_wide_sel, ., by = 'date') %>%
+  right_join(tab3_sel, ., by = 'date') %>%
+  mutate(vies = x - x_est,
+         vies2 = x - x_est_2,
+         vies3 = x - x_est_3)
+tab3_resultado
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_resultado_ok_book <-
+  tab2_by_station_norm_wide_sel_book %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab2_glance_sel_book$sigma_book[!is.na(x)]^2))
+
+tab2_resultado_1_book <-
+  tab2_by_station_norm_wide_sel_book %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / tab2_inv_sum_si2_book)
+
+tab2_resultado_book <-
+  tab2_by_station_norm_wide_sel_book %>%
+  mutate(
+    #x01 = tab_resultado_1
+    x_est = rowSums(select(., -1)) / tab2_inv_sum_si2_book,
+    x_est_2 = tab2_resultado_ok_book,
+    x_est_3 = tab2_resultado_1_book,
+    n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)) %>%
+  right_join(tab2_previstos_wide_sel_book, ., by = 'date') %>%
+  right_join(tab2_sel_book, ., by = 'date') %>%
+  mutate(vies = x - x_est,
+         vies2 = x - x_est_2,
+         vies3 = x - x_est_3)%>%
+  mutate_if(is.numeric, .funs = round, 1)
+tab2_resultado_book
+
+# Tabela 3
+tab3_resultado_ok_book <-
+  tab3_by_station_norm_wide_sel_book %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab3_glance_sel_book$sigma_eq1[!is.na(x)]^2))
+
+tab3_resultado_1_book <-
+  tab3_by_station_norm_wide_sel_book %>%
+  select(., -1) %>%
+  apply(., 1, function(x) sum(x[!is.na(x)]) / tab3_inv_sum_si2_book)
+
+tab3_resultado_book <-
+  tab3_by_station_norm_wide_sel_book %>%
+  mutate(
+    #x01 = tab_resultado_1
+    x_est = rowSums(select(., -1)) / tab3_inv_sum_si2_book,
+    x_est_2 = tab3_resultado_ok_book,
+    x_est_3 = tab3_resultado_1_book,
+    n_valid = rowSums(!is.na(select(., -1)), na.rm = TRUE)) %>%
+  right_join(tab3_previstos_wide_sel_book, ., by = 'date') %>%
+  right_join(tab3_sel_book, ., by = 'date') %>%
+  mutate(vies = x - x_est,
+         vies2 = x - x_est_2,
+         vies3 = x - x_est_3) %>%
+  mutate_if(is.numeric, .funs = round, 1)
+tab3_resultado_book
+```
+
+
+Verificação Viés
+
+```{r}
+# Tabela 2
+select(tab2_resultado, x, x_est, vies)
+  #mean(tab2_resultado$vies, na.rm = TRUE)
+sum(tab2_resultado$vies, na.rm = TRUE)
+sum(tab2_resultado$vies2, na.rm = TRUE)
+sum(tab2_resultado$vies3, na.rm = TRUE)
+hydroGOF::gof(tab2_resultado$x_est, tab2_resultado$x)
+
+# Tabela 3
+select(tab3_resultado, x, x_est, vies)
+#mean(tab3_resultado$vies, na.rm = TRUE)
+sum(tab3_resultado$vies, na.rm = TRUE)
+sum(tab3_resultado$vies2, na.rm = TRUE)
+sum(tab3_resultado$vies3, na.rm = TRUE)
+hydroGOF::gof(tab3_resultado$x_est, tab3_resultado$x)
+```
+
+
+```{r}
+# BOOK
+
+# Tabela 2
+select(tab2_resultado_book, x, x_est, vies)
+sum(tab2_resultado_book$vies, na.rm = TRUE)
+sum(tab2_resultado_book$vies2, na.rm = TRUE)
+sum(tab2_resultado_book$vies3, na.rm = TRUE)
+hydroGOF::gof(tab2_resultado_book$x_est, tab2_resultado_book$x)
+
+# Tabela 3
+select(tab3_resultado_book, x, x_est, vies)
+sum(tab3_resultado_book$vies, na.rm = TRUE)
+sum(tab3_resultado_book$vies2, na.rm = TRUE)
+sum(tab3_resultado_book$vies3, na.rm = TRUE)
+hydroGOF::gof(tab3_resultado_book$x_est, tab3_resultado_book$x)
+```
+
+
+
+Verificação de que a observação caia no intervalo de confiança da estimativa pela regressão linear.
+
+```{r}
+#f <- 3
+
+# Tabela 2
+tab2_slin
+
+tab2_susp <- 
+  tab2_resultado %>%
+  mutate(
+    #lower = x_est - f*slin, upper = x_est + f*slin,
+    lower = x_est_2 - f*tab2_slin, upper = x_est_2 + f*tab2_slin,
+    suspect = !(x >= lower &  x <= upper)) %>%
+  select(date, x, x_est, lower, upper, suspect, x_est_2)
+tab2_susp
+
+# Tabela 3
+tab3_slin
+
+tab3_susp <- 
+  tab3_resultado %>%
+  mutate(
+    #lower = x_est - f*slin, upper = x_est + f*slin,
+    lower = x_est_2 - f*tab3_slin, upper = x_est_2 + f*tab3_slin,
+    suspect = !(x >= lower &  x <= upper)) %>%
+  select(date, x, x_est, lower, upper, suspect, x_est_2)
+tab3_susp
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_slin_book
+
+tab2_susp_book <- 
+  tab2_resultado_book %>%
+  mutate(
+    #lower = x_est - f*slin, upper = x_est + f*slin,
+    lower = x_est_2 - f*tab2_slin_book, upper = x_est_2 + f*tab2_slin_book,
+    suspect = !(x >= lower &  x <= upper)) %>%
+  select(date, x, x_est, lower, upper, suspect, x_est_2)
+tab2_susp_book
+
+# Tabela 3
+tab3_slin_book
+
+tab3_susp_book <- 
+  tab3_resultado_book %>%
+  mutate(
+    #lower = x_est - f*slin, upper = x_est + f*slin,
+    lower = x_est_2 - f*tab3_slin_book, upper = x_est_2 + f*tab3_slin_book,
+    suspect = !(x >= lower &  x <= upper)) %>%
+  select(date, x, x_est, lower, upper, suspect, x_est_2)
+tab3_susp_book
+```
+
+
+Gráfico da série temporal das observações, estimativas e IC.
+
+```{r}
+# Tabela 2
+tab2_susp %>%
+  ggplot(aes(x = date, y = x)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(colour = "red") +
+  geom_line(aes(x = date, y = x_est_2)) +
+  theme_bw()
+
+# Tabela 3
+tab3_susp %>%
+  ggplot(aes(x = date, y = x)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(colour = "red") +
+  geom_line(aes(x = date, y = x_est_2)) +
+  theme_bw()
+```
+
+```{r}
+# BOOK
+
+# Tabela 2
+tab2_susp_book %>%
+  ggplot(aes(x = date, y = x)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(colour = "red") +
+  geom_line(aes(x = date, y = x_est_2)) +
+  theme_bw()
+
+# Tabela 3
+tab3_susp_book %>%
+  ggplot(aes(x = date, y = x)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(colour = "red") +
+  geom_line(aes(x = date, y = x_est_2)) +
+  theme_bw()
+```
+
+Gráfico de dispersão das observações e estimativas.
+
+```{r}
+library(ggpmisc)
+formula <- y ~ x
+
+# Tabela 2
+tab2_susp %>%
+  ggplot(aes(x = x, y = x_est_2)) +
+  geom_point(colour = "red") +
+  coord_equal() +
+  geom_smooth(method = "lm", formula = formula) +
+  stat_poly_eq(aes(label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+               formula = formula, 
+               parse = TRUE, ) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+# Tabela 3
+tab3_susp %>%
+  ggplot(aes(x = x, y = x_est_2)) +
+  geom_point(colour = "red") +
+  coord_equal() +
+  geom_smooth(method = "lm", formula = formula) +
+  stat_poly_eq(aes(label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+               formula = formula, 
+               parse = TRUE, ) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+```
+
+```{r}
+# BOOK
+
+library(ggpmisc)
+formula <- y ~ x
+
+# Tabela 2
+tab2_susp_book %>%
+  ggplot(aes(x = x, y = x_est_2)) +
+  geom_point(colour = "red") +
+  coord_equal() +
+  geom_smooth(method = "lm", formula = formula) +
+  stat_poly_eq(aes(label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+               formula = formula, 
+               parse = TRUE, ) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+# Tabela 3
+tab3_susp_book %>%
+  ggplot(aes(x = x, y = x_est_2)) +
+  geom_point(colour = "red") +
+  coord_equal() +
+  geom_smooth(method = "lm", formula = formula) +
+  stat_poly_eq(aes(label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+               formula = formula, 
+               parse = TRUE, ) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+```
+

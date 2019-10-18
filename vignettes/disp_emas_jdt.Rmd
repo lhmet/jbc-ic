@@ -1,0 +1,278 @@
+---
+title: "Disponibilidade de dados das EMAs para o Teste de Regressão Espacial"
+output: 
+  html_notebook: 
+    number_sections: yes
+    toc: yes
+---
+
+# Objetivos
+
+O objetivo deste documento é determinar a disponibilidade de dados para a aplicação do Teste de Regressão Espacial (TRE). O TRE requer que os dados divididos em intervalos de tempo fixo (60 dias). 
+
+Então determinou-se:
+
+- a disponibilidade de dados (dados não faltantes ou válidos) por intervalo fixo por EMA  
+
+- a disponibilidade de dados por intervalo fixo considerando todas EMAs
+
+- o maior período consecutivo de intervalos fixos com disponibilidade de dados acima de um limiar de 95% de disponibilidade
+
+
+# Pré-configurações
+
+```{r, message=FALSE, warning=FALSE}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(
+  c("dplyr", "tidyverse", "ggfortify", "lubridate", "modelr", "fs")
+  )
+
+# Carregando scripts necessários
+source("../R/crv_detect.R")
+source("../R/utils.R")
+source("../R/network-dists.R")
+# script para obter a distâncias de cada EMAs a todas EMAs
+# e inclui um indice 'proximity' para uso na seleção
+# das n EMAs mais próximas a uma EMA alvo
+source("../R/get-aws-neighborhood.R")
+```
+
+# Dados
+
+Séries temporais das variáveis meteorológicas das EMAs.
+
+```{r}
+var_data <- rio::import("../output/s08_data_sel.rds") %>% as_tibble
+var_data
+```
+
+Metadados das EMAs.
+
+```{r}
+var_info <- rio::import("../output/summary_80.rds") %>% as_tibble
+var_info
+```
+
+# Disponibilidade dos dados
+
+Para testar o TRE é importante conhecer a distribuição dos períodos consecutivos de janelas temporais (`TIME_INTERVAL`) acima de um dado limiar de disponibilidade. Assim podemos selecionar o maior período consecutivo para testar o método, evitando assim casos mais problemáticos associados a disponibilidade de dados que tornam inviável a plicação do método.
+
+
+```{r}
+# Variável Meteorológica
+VAR <- "tavg" 
+# Intervalo fixo de dias
+TIME_INTERVAL <- 60 
+```
+
+## Dados diários
+
+O TRE foi originalmente desenvolvido para dados diários, então vamos calcular as médias diárias da variável de interesse (definida pelo parâmetro `VAR`).
+
+```{r}
+daily_data <-
+  var_data %>%
+  rename("variable" = VAR) %>%
+#  filter(site %in% dists_ema$aux) %>%
+  select(site, date, variable) %>%
+  group_by(site, date = as.Date(date)) %>%
+  summarise(variable = round(mean(variable, na.rm = TRUE), 2)) %>%
+  ungroup() %>%
+  mutate(variable = ifelse(test = is.nan(variable), yes = NA, no = variable))
+daily_data
+
+#daily_data %>% filter(site == "A802") 
+```
+
+Determinando o total de dias por EMA no período  `r min(daily_data$date)` a `r max(daily_data$date)`.
+
+```{r}
+# Número de dias de cada EMA
+n_days_emas <-
+  daily_data %>%
+  group_by(site) %>%
+  summarise(n_days = n(), start = min(date), end = max(date)) #3288
+n_days_emas
+unique(n_days_emas$n_days)
+```
+
+## Disponibilidade geral de dados por período de intervalos de tempo
+
+Para calcular a disponibilidade de observações em cada janela de tempo (`TIME_INTERVAL`) criou-se um índice para identificar o número de período com tamanho `TIME_INTERVAL`. Este índice é a referência no agrupamento dos dados e foi chamado `int` . A partir deste índice obtém-se as informações de disponibilidade em cada intervalo.
+
+> O cálculo abaixo só é válido se todas EMAs tiverem o mesmo `ndays` na tabela `n_days_emas`.
+
+
+```{r}
+daily_data <- daily_data %>%
+  group_by(site) %>%
+  # mudar para time_interv
+  mutate(int = rep(1:(trunc(unique(n_days_emas$n_days) / TIME_INTERVAL) + 1), 
+                   each = TIME_INTERVAL)[1:(n())]
+         )
+saveRDS(daily_data, file = "../output/tar-data-inmet-2008-2016-daily-interval60.RDS")
+```
+
+Calculo da disponibilidade por EMA e intervalo.
+
+```{r}
+disp_int <- daily_data %>% #tail()
+  group_by(int, site) %>%
+  #summarise(N = n())
+  summarise(start_int = min(date),
+            end_int = max(date),
+            tot_days = n(),
+            tot_valid = sum(!is.na(variable)),
+            perc_valid = (tot_valid/tot_days) * 100
+            ) %>%
+  ungroup()
+
+# Nota 1: a variável 'int' na tabela de 'disp_int' corresponde ao número do intervalo analisado, por exemplo, para um intervalo de 60 em 60 dias (TIME_INTERVAL = 60), int = 1 corresponde aos primeiros 60 dias testados, int = 2, aos 60 dias seguintes, e assim sucessivamente.
+
+disp_int
+rio::export(disp_int, file = "../output/disp_intervals_TRE.RDS")
+```
+
+Determinando a disponibilidade por intervalo, e verificando através da média qual intervalo (de 60 dias) teve maior disponibilidade dentro do período de 2008 à 2016
+
+```{r}
+info_int <- disp_int %>%
+  group_by(int, start_int, end_int) %>%
+  summarise(
+    perc_min = min(perc_valid),
+    perc_mean = mean(perc_valid),
+    perc_max = max(perc_valid)
+  )
+info_int
+#info_int %>% filter(perc_mean == min(info_int$perc_mean))
+#sum(info_int$days) #~ 9 anos
+```
+
+Intervalo com maior porcentagem (min) de dados válidos
+
+```{r}
+int_min <- info_int %>% filter(perc_min == max(info_int$perc_min))
+int_min
+```
+
+Intervalo com maior porcentagem (mean) de dados válidos
+
+```{r}
+int_mean <- info_int %>% filter(perc_mean == max(info_int$perc_mean))
+int_mean
+```
+
+
+
+## Visualização da disponibilidade geral
+
+Variação temporal da disponibilidade de cada intervalo de tempo para cada EMA
+
+```{r, fig.width=8.5, fig.height=8.95, fig.align='center'}
+# Gerando vetor que será usado para ordenar a variável 'site' da maio para 
+# menor disponibilidade no período
+sites_ord <-
+  disp_int %>%
+  group_by(site) %>%
+  summarise(perc_mean = mean(perc_valid, na.rm = TRUE)) %>%
+  arrange(desc(perc_mean)) %>%
+  pull(site)
+
+# dados par o plot
+disp_int_plot <-
+  disp_int %>%
+  mutate(
+    # Substituindo valores de porcentagem iguais à 0 por NA
+    perc_valid_na = ifelse(perc_valid > 0, perc_valid, NA),
+    # Ordenando a variável 'site'
+    site = ordered(site, levels = sites_ord) )
+# plot
+g1 <-
+  ggplot(data = disp_int_plot, aes(x = start_int, y = site)) +
+  geom_point(aes(colour = perc_valid_na), shape = 15, size = 2.5) +
+  labs(x = "Tempo (em anos)", y = "EMA") +
+  scale_colour_gradientn(
+    paste0("Disponibilidade (%) \n cada " , TIME_INTERVAL, " dias"),
+    colours = viridis::viridis(n = 256), na.value = NA
+  ) +
+   scale_x_date(expand = c(0.01, 0.01),
+     date_breaks = "12 months",
+     date_labels = "%Y") +
+  theme_bw() +
+  #theme(axis.text.x = element_text(angle = 0, hjust = 0)) +
+  #  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(text = element_text(size = 10)) # +
+# ggplot2::ggtitle(TITLE) +
+# ggplot2::theme(plot.title = element_text(hjust = 0.5))
+g1
+
+```
+
+
+
+Variação dos valores mínimos, médios e máximos para cada intentificador
+
+```{r, fig.width=9.3, fig.height=4.25, fig.align='center'}
+g2 <-
+  ggplot(info_int, aes(start_int)) +
+  # scale_x_continuous(breaks = bvector_x, limits = lvector_x) +
+  # scale_y_continuous(breaks = bvector_y, limits = lvector_y) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_date(breaks = scales::pretty_breaks(n = 10)) +
+  geom_line(aes(y = perc_max, colour = "Max")) +
+  geom_line(aes(y = perc_mean, colour = "Mean")) + 
+  geom_line(aes(y = perc_min, colour = "Min")) + 
+  geom_hline(yintercept = 95, linetype = 2) +
+  labs(x = "Tempo (anos)", y = "Disponibilidade (%)", color = "\n")
+g2
+
+```
+
+# Definição do período para teste de aplicação do TRE
+
+Para teste inicial do TRE será selecionado o maior período consecutivo de intervalos (de 60 dias) acima de um limiar de disponibilidade de observações (`perc_lim` = 95%).
+
+```{r}
+# Valor de porcentagem que será usada como limiar para filtragem de observações
+# válidas
+perc_lim <- 95
+
+# coluna para identificar períodos com disponibilidade acima do limiar perc_lim
+sel_info_int <-
+  info_int %>%
+  dplyr::mutate(above_lim = ifelse(perc_mean >= perc_lim, 1, 0)) #%>% 
+  # PQ NAO FUNCIONA????
+  #dplyr::mutate(ID = crv_detect(x = above_lim, numerate = TRUE))
+
+sel_info_int$id <- crv_detect(sel_info_int$above_lim,
+      numerate = TRUE
+)
+#sel_info_int
+# resumo de cada evento 
+summary_sel_info_int <- dplyr::filter(sel_info_int, !is.na(id)) %>%
+  gather(datas, date, start_int:end_int) %>%
+  dplyr::group_by(id) %>%
+  dplyr::summarise(
+    # aws = first(aws),
+    begin = min(date),
+    end = max(date)
+  ) %>%
+  dplyr::mutate(N = as.numeric((end - begin)) + 1) %>%
+  dplyr::arrange(desc(N))
+saveRDS(summary_sel_info_int, file = "../output/dates_disp_95_for_TRE.RDS")
+ungroup(summary_sel_info_int)
+```
+
+Período sequencial de maior disponibilidade.
+
+```{r}
+dates_disp_max <- summary_sel_info_int %>%
+  select(begin, end) %>%
+  slice(1)
+dates_disp_max
+```
+
+

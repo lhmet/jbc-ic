@@ -52,7 +52,7 @@ network_dists <- function(netw_ref = coords_ngb,
     as.character()
   
   dists <- mutate(dists, ref = ref_sites) %>%
-    tibble::as_data_frame() %>%
+    tibble::as_tibble() %>%
     arrange_vars(., c("ref" = 1)) 
   #dists
   

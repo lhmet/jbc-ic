@@ -1,7 +1,7 @@
 easypackages::libraries(c("tidyverse", "modelr", "broom", "ggfortify"))
 
 # dados -----------------------------------------------------------------------
-tab2 <- rio::import("data/data-table2-Hubbard2012-Cap1-BookPractConcepQC.txt") %>%
+tab2 <- rio::import("../data/data-table2-Hubbard2012-Cap1-BookPractConcepQC.txt") %>%
   as_tibble()
 # tab2 <- rename(tab2, "target" = x)
 names(tab2) <- gsub("\\'", "lin", names(tab2))
@@ -19,6 +19,7 @@ tab3 <- readr::read_table("data/data-table3-Hubbard2012-Cap1-BookPractConcepQC.t
   setNames(., gsub("-", "_", names(.))) %>%
   setNames(., tolower(names(.)))
 
+tab3 <- tab2
 # tab3_long <- select(tab2, days:y4) %>%
 tab3_long <- select(tab3, days:y4) %>%
   gather(y, tempf, -c(x, days))

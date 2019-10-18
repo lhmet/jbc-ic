@@ -26,7 +26,7 @@
 #'
 crv_detect <- function(x, thresh = 0, min.steps = 2, numerate = FALSE){
   
-  # x <- temp; thresh = 0; min.steps = 2; numerate = TRUE
+   #x <- sel_info_int$above_lim; thresh = 0; min.steps = 2; numerate = TRUE
   
   default <- -Inf
   # to deal with crv of NAs and 0s 

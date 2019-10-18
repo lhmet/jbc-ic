@@ -10,79 +10,100 @@ output: html_notebook
 rm(list = ls())
 
 # Carregando pacotes necessários
-easypackages::libraries(c("tidyverse", "ggfortify", "lubridate", "modelr"))
+easypackages::libraries(c("tidyverse", "ggfortify", "lubridate", "modelr", "broom"))
 
 # Carregando scripts necessários
 source("../R/network-dists.R")
 source("../R/utils.R")
 ```
 
-# Constantes usadas ao longo das equações
-```{r}
-REF <- "A803" # EMA de referência
-#REF <- "A812" # EMA de referência
-M <- 10 # Número original de EMAs
-VAR <- "tavg" # Variável a ser testada
-#TYPE <- "hourly" # Caso o teste seja feito para dados horários
-TYPE <- "daily" # Caso o teste seja feito para dados diários (média)
-hourly_HOUR <- 12 # Hora de referência utilizada nos dados horários
-hourly_DAY <- "2016-09-22" # Dia de referência utilizado nos dados horários
-#hourly_DAY <- "2016-08-22" # Dia utilizado nos dados horários
-hourly_INTERVAL <- 15 # Intervalo de tempo, dias antes e depois do dia de referência
-PERC_REF <- 50 # Percentagem de dados válidos aceita (maior ou igual)
-R2_THRESHOLD <- 0.55 # limiar do coeficiente de determinação 
-# (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
-f <- 3 # fator do intervalo de confiança
-```
 
 # Dados
 
-Como foi gerado estes dados.
+Para aplicar o teste de regressão espacial (SRT) serão usados:
+ - séries diárias da variável de interesse (temperatura do ar)
+ - tabela de distâncias entre as EMAs
+
+Dados.
 
 ```{r}
-(var_data <- rio::import("../output/s08_data_sel.rds") %>% as_tibble)
+tair_dly <- rio::import("../output/s08_data_sel.rds") %>%
+  as_tibble %>%
+  mutate(date = date - 3*3600,
+         date = as.Date(date)
+         ) %>%
+  filter(year(date) >= 2008) %>%
+  group_by(date, site) %>%
+  summarise(tavg = mean(tavg, na.rm = TRUE)) %>%
+  arrange(site, date)
+tair_dly
 ```
 
-Metadados das EMA.
+Distância de cada EMA às demais da rede de estações meteorológicas.
 
 ```{r}
-(var_info <- rio::import("../output/summary_80.rds") %>% as_tibble)
-```
-
-# Cálculo de distâncias
-
-```{r}
+#metadados
+info <- rio::import("../output/summary_80.rds") %>% as_tibble
+# distâncias
 dists <- network_dists(
-  netw_ref = var_info,
-  netw_aux = var_info, 
+  netw_ref = info,
+  netw_aux = info, 
   dx_max = NA,
   lon_lat = TRUE)
 dists
 ```
 
-A EMA de referência para teste será a A803, Santa Maria-RS, e suas 10 EMAs vizinhas mais próximas.
+# Parâmetros necessários para aplicação do SRT
 
 ```{r}
-ema_dists <-
+REF <- "A803" # EMA de referência
+# REF = "A812" # EMA de referência
+M <- 10 # Número de EMAs selecionadas dentro de uma certa distância da EMA de interesse
+VAR <- "tavg" # Variável a ser testada
+# TYPE = "hourly" # Caso o teste seja feito para dados horários
+TYPE <- "daily" # Caso o teste seja feito para dados diários (média)
+hourly_HOUR <- 12 # Hora de referência utilizada nos dados horários
+date_0 <- "2016-09-22" # Dia de referência utilizado nos dados horários
+# date_0 = "2016-08-22" # Dia utilizado nos dados horários
+hourly_INTERVAL <- 15 # Intervalo de tempo, dias antes e depois do dia de referência
+PERC_REF <- 50 # Percentagem de dados válidos aceita (maior ou igual)
+R2_THRESHOLD <- 0.55 # limiar do coeficiente de determinação
+# (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
+f <- 3 # fator do intervalo de confiança
+```
+
+
+# Seleção das EMAs vizinhas à EMA de interesse
+
+Aqui começa o corpo da função. 
+
+O primeiro passo é filtrar as distâncias de acordo com a EMA de referência (0).
+
+```{r}
+dists_0 <-
   dists %>%
   filter(ref == REF) %>%
   arrange(dis) %>%
   head(M + 1) # a própria ema inclusive
-ema_dists
+dists_0
 ```
 
 Seleção de dados da EMA selecionada e suas vizinhas.
 
 ```{r}
-data_rename <-
-      var_data %>%
-      rename("var" = VAR)
-ema_data <-
-  data_rename %>%
-  filter(site %in% ema_dists$aux) %>%
-  select(site, date, var)
-ema_data
+data_0 <-
+      tair_dly %>%
+      rename("value" = VAR) %>%
+      filter(site %in% dists_0$aux) %>%
+      select(site, date, value)
+data_0
 ```
+
+
+PAREI AQUI
+
+
+
 
 Escolha do tipo de dado analisado, horário ou diário
 
@@ -97,8 +118,8 @@ if (TYPE == "hourly") {
     ema_data_if %>%
     ## Selecionando um período de 15 dias antes e depois do dia escolhido
     filter(
-      as.Date(date) >= (as.Date(hourly_DAY) - hourly_INTERVAL) & 
-      as.Date(date) <= (as.Date(hourly_DAY) + hourly_INTERVAL))
+      as.Date(date) >= (as.Date(date_0) - hourly_INTERVAL) & 
+      as.Date(date) <= (as.Date(date_0) + hourly_INTERVAL))
   }
 ```
 
@@ -110,13 +131,13 @@ if (TYPE == "daily") {
     ema_data %>%
      ## Selecionando um período de 15 dias antes e depois do dia escolhido
     filter(
-      as.Date(date) >= (as.Date(hourly_DAY) - hourly_INTERVAL) & 
-      as.Date(date) <= (as.Date(hourly_DAY) + hourly_INTERVAL)) %>%
+      as.Date(date) >= (as.Date(date_0) - hourly_INTERVAL) & 
+      as.Date(date) <= (as.Date(date_0) + hourly_INTERVAL)) %>%
     group_by(
       site,
       date = as.Date(date)) %>%
     summarise(
-      var = mean(var, na.rm = TRUE)) %>% #group_by(site) %>% tally() %>%
+      value = mean(value, na.rm = TRUE)) %>% #group_by(site) %>% tally() %>%
     ungroup()
   } # sem NA nos dados
 ```
@@ -129,7 +150,7 @@ disp_period <-
   group_by(site) %>% 
   summarise(
     tot_all = n(),
-    tot_valid = sum(!is.na(var)),
+    tot_valid = sum(!is.na(value)),
     perc_valid = (tot_valid/tot_all) * 100) %>%
   arrange(perc_valid)
 disp_period
@@ -150,7 +171,7 @@ Estruturar dados no formato similar ao do exemplo de aplicação do método. O f
 data_wide <-
   ema_data %>%
   mutate(date = as.Date(date)) %>%
-  spread(site, var) %>%
+  spread(site, value) %>%
   rename("x" = REF) %>%
   as.tibble()
 data_wide
@@ -222,7 +243,6 @@ tab_glance_sel
 
 ```
 
-
 Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$.
 
 ```{r}
@@ -247,8 +267,6 @@ tab_N <- length(tab_glance_sel$sigma)
 # obtida isolando s' na eq. 5
 slin <- sqrt(tab_N/inv_sum_si2)
 ```
-
-############################# CONTINUAR AQUI ###################################
 
 Vamos filtrar os dados gerados anteriormente mantendo somente as EMAs selecionadas.
 
@@ -287,7 +305,7 @@ tab_by_station_norm_sel <-
   unnest(pred) %>%
   rename("xlin" = pred) %>%
   # numerador da eq. 4
-  mutate(xlin_norm = xlin/sigma^2)
+  mutate(xlim_norm = xlin/sigma^2)
 tab_by_station_norm_sel
 ```
 
@@ -296,11 +314,11 @@ Colocando temperaturas previstas normalizadas no formato wide.
 ```{r}
 tab_by_station_norm_wide_sel <-
   tab_by_station_norm_sel %>%
-  select(id, date, xlin_norm) %>%
+  select(id, date, xlim_norm) %>%
   # ao invés dos códigos das EMAs utilizaremos um num sequencial
   mutate(id = as.numeric(as.factor(id))) %>%
-  spread(id, xlin_norm) %>%
-  setNames(c("date", paste0("xlin_norm", names(.)[-1])))
+  spread(id, xlim_norm) %>%
+  setNames(c("date", paste0("xlim_norm", names(.)[-1])))
 tab_by_station_norm_wide_sel
 ```
 
@@ -312,10 +330,10 @@ tab_resultado_ok <-
   select(., -1) %>%
   apply(., 1, function(x) sum(x[!is.na(x)]) / sum(1/tab_glance_sel$sigma[!is.na(x)]^2))
 
-tab_resultado_1 <-
+ tab_resultado_1 <-
   tab_by_station_norm_wide_sel %>%
-  select(., -1) %>%
-  apply(., 1, function(x) sum(x[!is.na(x)]) / inv_sum_si2)
+   select(., -1) %>%
+   apply(., 1, function(x) sum(x[!is.na(x)]) / inv_sum_si2)
 
 #sum(1/tab_glance_sel$sigma[]^2)
 
