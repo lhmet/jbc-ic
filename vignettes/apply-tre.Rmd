@@ -1,5 +1,5 @@
 ---
-title: "Aplicação do TRE para o período de maior disponibidade de dados das EMAs"
+title: "Aplicação do TRE"
 output: 
   html_notebook: 
     number_sections: yes
@@ -26,141 +26,14 @@ source("../R/utils.R")
 
 # Dados necessários
 
-**Séries temporais diárias** das variáveis meteorológicas das EMAs.
 
+```{r}
+check_disp_int_inmet_ok <- rio::import("../output/check_disp_int_inmet_ok.RDS")
+check_disp_int_inmet_ok
+```
 ```{r}
 data <- rio::import("../output/tar-data-inmet-2008-2016-daily-interval60.RDS")
 data
-```
-
-Metadados das EMAs.
-
-```{r}
-info <- rio::import("../output/summary_80.rds") %>% as_tibble
-info
-```
-
-A seguir, determinamos a distância entre as EMAs e um índice de proximidade. Quanto menor o índice `proximity` mais próximo da EMA `ref` (EMA de referência).
-
-```{r}
-neighbors <- get_aws_neighborhood(
-  netw_ref = info,
-  netw_aux = info,
-  outfile = "../output/aws-neighbors-south-br.RDS"
-  )
-neighbors
-```
-
-
-
-Datas dos períodos de maior disponibilidade para o intervalo de tempo definido.
-
-```{r}
-dates_disp <- rio::import("../output/dates_disp_95_for_TRE.RDS")
-dates_disp_max <-
-  dates_disp %>%
-  select(begin, end) %>%
-  slice(1)
-dates_disp_max
-```
-
-
-# Dados diários no período com máxima disponibilidade
-
-Variável com os dados diários estruturados no formato amplo (requerido para aplicação do TRE) e com o período selecionado.
-
-```{r}
-daily_data_wide <-
-  data %>%
-  tidyr::spread(site, variable) %>%
-  filter(date >= dates_disp_max$begin, date <= dates_disp_max$end) 
-daily_data_wide
-```
-
-
-
-# Parâmetros do Teste de Regressão Espacial
-
-O Teste de Regressão Espacial (TRE) requer a definição dos seguintes parâmetros.
-
-```{r}
-# Variável Meteorológica
-VAR <- "tavg" 
-# Intervalo de dias testado
-TIME_INTERVAL <- 60 
-# Número original de EMAs
-M <- 10 
-# porcentagem de dados válidos aceita dentro do período aplicado o método (maior ou igual)
-PERC_REF <- 50 
-TEXT_FALSE <- "Teste não aplicado, devido ao fato da EMA alvo não possuir dados válidos para comparar com os dados das EMAs vizinhas."
-# limiar do coeficiente de determinação (variância mínima explicada pela
-R2_THRESHOLD <- 0.55  
-```
-
-
-# Verificação de disponibilidade de dados para o TRE
-
-Para selecionar os dados do TRE precisamos ter num intervalo fixo um número de EMAs com disponibilidade acima de 50%.
-A disponibilidade de cada EMA por intervalo não muda então podemos realizar este cálculo de uma vez só.
-
-```{r}
-# disp <- daily_data_wide %>%
-#   #dplyr::select(-date) %>%
-#   dplyr::group_by(int) %>%
-#   dplyr::summarise_at(vars(-date), .funs = ~percent_valid(.)) %>%
-#   gather(site, perc_valid, -int) %>%
-#   arrange(int, site)
-
-disp_intervals <- rio::import("../output/disp_intervals_TRE.RDS")
-disp_intervals_sel <- disp_intervals %>%
-  filter(int %in% daily_data_wide$int)
-disp_intervals_sel
-
-# versão ampla
-disp_intervals_sel_wide <- disp_intervals_sel %>% 
-  select(int, site, perc_valid) %>%
-  spread(site, perc_valid)
-disp_intervals_sel_wide
-```
-
-
-# Verificação Condições necessárias para aplicação do TRE
-
-Intervalos com aplicabilidade do TRE são aqueles que:
-
-- a EMA alvo tenha pelo menos 50% de dados disponíveis (condição necessária)
-
-- `M` (neste caso 10) EMAs vizinhas tenham 50% de dados disponíveis 
-
-Para uma EMA alvo, obtém a tabela de controle de aplicabilidade do TRE.
-
-```{r}
-check_disp_int <- check_aws_srt_feasibility(aws_target = "A882")
-unnest(check_disp_int)
-#check_disp_int[4, "neighbors_checked"][[1]]
-#check_disp_int[5, "neighbors_checked"][[1]]
-```
-
-
-```{r}
-aws_targets <- unique(disp_intervals_sel$site)
-aws_targets
-check_disp_int_inmet <- map_df(aws_targets, ~check_aws_srt_feasibility(aws_target = .x))
-
-#a882 <- filter(check_disp_int_inmet, target == "A882") 
-#a882[4, "neighbors_checked"][[1]]
-#a882[5, "neighbors_checked"][[1]]
-```
-
-
-Selecionando as EMAs alvo com intervalos que são aplicáveis para o TRE.
-
-
-```{r}
-check_disp_int_inmet_ok <- check_disp_int_inmet %>%
-  filter(is_available)  
-check_disp_int_inmet_ok
-rio::export(check_disp_int_inmet_ok, file = "../output/check_disp_int_inmet_ok.RDS")
 ```
 
 
@@ -179,7 +52,7 @@ check_disp_int_target <- filter(check_disp_int_inmet_ok, target == aws_target) %
 neighbors_o <- c(aws_target, unique(check_disp_int_target$neighbors_checked))
 
 data %>%
-  filter(
+  dplyr::filter(
     site %in% neighbors_o,
     int %in% unique(check_disp_int_target$int)
   ) %>%
