@@ -8,7 +8,6 @@ check_aws_srt_feasibility <- function(
   stopifnot(all(c("int", "site", "perc_valid") %in% names(.disp_intervals_all)))
   stopifnot(is.character(.aws_target), is.numeric(.perc_ref), is.numeric(.m))
 
-
   # neighbors stations codes
   neighbors_target <- stations_neighbors(
     neighbors = .neighborhood,
