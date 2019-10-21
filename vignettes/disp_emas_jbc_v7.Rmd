@@ -1,0 +1,453 @@
+---
+title: "Verificação da disponibilidade dos dados para as EMAs na região sul do Brasil"
+output: html_notebook
+---
+
+# Pré-configurações
+
+```{r}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(c("dplyr", "tidyverse", "ggfortify", "ggpmisc", "lubridate", "modelr"))
+
+# Carregando scripts necessários
+source("../R/network-dists.R")
+source("../R/crv_detect.R")
+source("../R/utils.R")
+source("../R/regression_model_function.R")
+
+```
+
+# Dados
+
+Dados das EMAs
+
+```{r}
+var_data <- rio::import("../output/s08_data_sel.rds") %>% as_tibble
+var_data
+```
+
+Metadados das EMAs
+
+```{r}
+var_info <- rio::import("../output/summary_80.rds") %>% as_tibble
+var_info
+```
+
+# Constantes usadas ao longo das equações
+
+```{r}
+VAR <- "tavg" # Variável a ser testada
+#TIME_INTERVAL <- 30 # Intervalo de dias testado
+TIME_INTERVAL <- 60 # Intervalo de dias testado
+#TIME_INTERVAL <- 90 # Intervalo de dias testado
+M <- 10 # Número original de EMAs
+PERC_INT <- 95 # porcentagem usada como referência para fltrar a média dos dados válidos
+PERC_REF <- 50 # porcentagem de dados válidos aceita dentro do período aplicado o método (maior ou igual)
+R2_THRESHOLD <- 0.55 # limiar do coeficiente de determinação (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
+f <- 3 # fator do intervalo de confiança
+```
+
+# Disponibilidade dos dados
+
+Conversão para valores diários
+
+```{r}
+daily_data <-
+  var_data %>%
+  rename("variable" = VAR) %>%
+#  filter(site %in% dists_ema$aux) %>%
+  select(site, date, variable) %>%
+  group_by(site, date = as.Date(date)) %>%
+  summarise(variable = round(mean(variable, na.rm = TRUE), 2)) %>%
+  ungroup() %>%
+  mutate(variable = ifelse(test = is.nan(variable), yes = NA, no = variable))
+daily_data
+
+#daily_data %>% filter(site == "A802") 
+```
+
+Determinando a disponibilidade dos dados dentro do intervalo proposto
+
+```{r}
+# Número de dias de cada EMA
+n_days_emas <-
+  daily_data %>%
+  group_by(site) %>%
+  summarise(n_days = n()) #3288
+n_days_emas
+```
+
+Para calcular a disponibilidade de observações em cada janela de tempo (`TIME_INTERVAL`) foi criado um índice da janela temporal para referência no agrupamento dos dados. A partir deste índice obtém-se as informações de disponibilidade em cada intervalo.
+
+```{r}
+disp_int <-
+  daily_data %>%
+  group_by(site) %>%
+  mutate(
+    int = rep(
+      1:(trunc(unique(n_days_emas$n_days) / TIME_INTERVAL) + 1),
+      each = TIME_INTERVAL)[1:(n())]
+    ) %>% #tail()
+  group_by(site, int) %>%
+  #summarise(N = n())
+  summarise(
+    start_int = min(date),
+    end_int = max(date),
+    tot_days = n(),
+    tot_valid = sum(!is.na(variable)),
+    perc_valid = (tot_valid/tot_days) * 100
+            ) %>%
+  ungroup()
+
+disp_int
+
+# Nota 1: a variável 'int' na tabela de 'disp_int' corresponde ao número do intervalo analisado, por exemplo, para um intervalo de 60 em 60 dias (TIME_INTERVAL = 60), int = 1 corresponde aos primeiros 60 dias testados, int = 2, aos 60 dias seguintes, e assim sucessivamente.
+```
+
+Determinando a disponibilidade por intervalo, e verificando através da média qual intervalo de 60 dias teve maior disponibilidade dentro do período de 2008 à 2016
+
+```{r}
+info_int <-
+  disp_int %>%
+  group_by(int, start_int, end_int) %>%
+  summarise(
+    perc_min = min(perc_valid),
+    perc_mean = mean(perc_valid),
+    perc_max = max(perc_valid)
+  )
+info_int
+#info_int %>% filter(perc_mean == min(info_int$perc_mean))
+#sum(info_int$days) #~ 9 anos
+```
+
+Intervalo com maior porcentagem (min) de dados válidos
+
+```{r}
+int_min <- info_int %>% filter(perc_min == max(info_int$perc_min))
+int_min
+
+# Nota 2a: (int = 36, para TIME_INTERVAL = 60)
+# Nota 2b: (int = 24, para TIME_INTERVAL = 90)
+```
+
+Intervalo com maior porcentagem (mean) de dados válidos
+
+```{r}
+int_mean <- info_int %>% filter(perc_mean == max(info_int$perc_mean))
+int_mean
+
+# Nota 3a: (int = 36, para TIME_INTERVAL = 60)
+# Nota 3b: (int = 21, para TIME_INTERVAL = 90)
+```
+
+# Gráficos e Mapas
+
+Variação temporal da disponibilidade de cada intervalo de tempo para cada EMA
+
+```{r, fig.width=8.5, fig.height=8.95, fig.align='center'}
+# Gerando vetor que será usado para ordenar a variável 'site' da maio para menor disponibilidade no período
+sites_ord <-
+  disp_int %>%
+  group_by(site) %>%
+  summarise(perc_mean = mean(perc_valid, na.rm = TRUE)) %>%
+  arrange(desc(perc_mean)) %>%
+  pull(site)
+
+# dados par o plot
+disp_int_plot <-
+  disp_int %>%
+  mutate(
+    # Substituindo valores de porcentagem iguais à 0 por NA
+    perc_valid_na = ifelse(perc_valid > 0, perc_valid, NA),
+    # Ordenando a variável 'site'
+    site = ordered(site, levels = sites_ord) )
+# plot
+g1 <-
+  ggplot(data = disp_int_plot, aes(x = start_int, y = site)) +
+  geom_point(aes(colour = perc_valid_na), shape = 15, size = 2.5) +
+  labs(x = "Tempo (em anos)", y = "EMA") +
+  scale_colour_gradientn(
+    paste0("Disponibilidade (%) \n cada " , TIME_INTERVAL, " dias"),
+    colours = viridis::viridis(n = 256), na.value = NA
+  ) +
+   scale_x_date(expand = c(0.01, 0.01),
+     date_breaks = "12 months",
+     date_labels = "%Y") +
+  theme_bw() +
+  #theme(axis.text.x = element_text(angle = 0, hjust = 0)) +
+  #  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(text = element_text(size = 10)) # +
+# ggplot2::ggtitle(TITLE) +
+# ggplot2::theme(plot.title = element_text(hjust = 0.5))
+g1
+
+```
+
+Variação dos valores mínimos, médios e máximos para cada intentificador
+
+```{r, fig.width=9.3, fig.height=4.25, fig.align='center'}
+g2 <-
+  ggplot(info_int, aes(start_int)) +
+  # scale_x_continuous(breaks = bvector_x, limits = lvector_x) +
+  # scale_y_continuous(breaks = bvector_y, limits = lvector_y) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_date(breaks = scales::pretty_breaks(n = 10)) +
+  geom_line(aes(y = perc_max, colour = "Max")) +
+  geom_line(aes(y = perc_mean, colour = "Mean")) + 
+  geom_line(aes(y = perc_min, colour = "Min")) + 
+  geom_hline(yintercept = 95, linetype = 2) +
+  labs(x = "Tempo (anos)", y = "Disponibilidade (%)", color = "\n")
+g2
+
+```
+
+# Seleção do período para a aplicação do teste
+
+Determinando o período acima de um limiar (95%) de disponibilidade de observações.
+
+```{r}
+# Valor de porcentagem que será usada como limiar para filtragem
+perc_lim <- PERC_INT
+
+# Gerando nova coluna com valores de 0 e 1 usando como parâmetro o valor escolhido anteriormente
+sel_info_int <-
+  info_int %>%
+  mutate(above_lim = if_else(perc_mean >= perc_lim, 1, 0))
+
+dtfm <-
+  data.frame(
+    sel_info_int,
+    id = crv_detect(sel_info_int[["above_lim"]], numerate = TRUE))
+#dtfm <- dplyr::rename_(dtfm, value = var.name)
+
+sted_seq <-
+  dplyr::filter(dtfm, !is.na(id)) %>%
+  gather(datas, date, start_int:end_int) %>%
+  dplyr::group_by(id) %>%
+  dplyr::summarise(
+    #aws = first(aws),
+    begin = min(date),
+    end = max(date)) %>%
+  dplyr::mutate(N = as.numeric((end - begin)) + 1) %>%
+  dplyr::arrange(desc(N)) %>%
+  ungroup()
+sted_seq
+
+period_longer_disp <-
+  dtfm %>%
+  filter(start_int >= sted_seq$begin[1] & end_int <= sted_seq$end[1]) %>%
+  select(-c(above_lim, id))
+period_longer_disp
+```
+
+# Seleção de dados da EMA selecionada e suas vizinhas
+
+Cálculo de distâncias
+
+```{r}
+dists <-
+  network_dists(
+    netw_ref = var_info,
+    netw_aux = var_info,
+    dx_max = NA,
+    lon_lat = TRUE)
+dists
+```
+
+Gerando uma lista com cada ema de referência e suas M vizinhas mais próximas
+
+```{r}
+neighbors_list <-
+  dists %>%
+  arrange(ref, dis) %>%
+  #filter(dis > 0) %>%
+  group_by(ref) %>%
+  slice(1:(M+1))
+
+neighbors_list %>% tally()
+```
+
+<!-- Dados estruturados com formato sililar ao do exemplo de aplicação do método. O formato dos dados é com a data na 1ª coluna, a EMA de referência na 2ª coluna e as EMAs vizinhas nas demais colunas. -->
+
+Variável com os dados diários estruturados no formato wide, e com o período selecionado
+
+```{r}
+daily_data_wide <-
+  daily_data %>%
+  spread(site, variable) %>%
+#  rename("x" = REF) %>%
+  filter(date >= sted_seq$begin[1], date <= sted_seq$end[1]) %>%
+  mutate(int = rep(x = period_longer_disp$int, each = TIME_INTERVAL)) %>%
+  select(int, date, everything())
+daily_data_wide
+```
+
+Gerando uma lista a partir dos dados diários no formato wide, com cada EMA e suas vizinhas, e separados por intervalo de N dias
+
+```{r}
+daily_data_wide_list <- list()
+daily_data_wide_list_sup <- list()
+
+for (e in seq_along(unique(dists$ref))) {
+  # Selecionando a EMA alvo
+  ema_target <- unique(dists$ref)[e]
+  # Selecionando as EMAs vizinhas yn, à ema alvo x
+  neighbors_target <-
+    dists %>%
+    filter(ref == unique(dists$ref)[e]) %>%
+    arrange(dis) %>%
+    head(n = M + 1)
+  # Selecionando a EMA alvo e suas vizinhas
+  daily_data_wide_target <-
+    daily_data_wide %>%
+    select(int, date, neighbors_target$aux) %>%
+    mutate(ema = ema_target) %>%
+    select(ema, int, everything()) %>%
+    rename("x" = ema_target)
+  for (i in seq_along(unique(daily_data_wide_target$int))) {
+    filter_dayle_data_wide_target <-
+      daily_data_wide_target %>%
+      filter(int == unique(daily_data_wide_target$int)[i])
+    filter_neighbors_interval <-
+      filter_dayle_data_wide_target %>%
+      select(-c(ema, int, date, x)) %>%
+      gather(., key = 'yn', value = 'var') %>%
+      group_by(yn) %>%
+      summarise(
+        tot = n(),
+        valid = sum(!is.na(var)),
+        perc_valid = (valid/tot) * 100) %>%
+      filter(perc_valid <= PERC_REF)
+    daily_data_wide_list_sup[[i]] <-
+      filter_dayle_data_wide_target %>%
+      select(-c(filter_neighbors_interval$yn))
+    names(daily_data_wide_list_sup)[[i]] <- paste0("int_", unique((daily_data_wide_list_sup[[i]])$int))
+    }
+  daily_data_wide_list[[e]] <- daily_data_wide_list_sup
+  names(daily_data_wide_list)[[e]] <- paste0("ema_", ema_target)
+  }
+
+# Removendo lista suporte
+rm(daily_data_wide_list_sup)
+
+# Lista completa
+#View(daily_data_wide_list)
+
+# Exempĺo da lista
+daily_data_wide_list$ema_A801$int_27
+
+
+#reshape::merge_all(daily_data_wide_target_list)
+```
+
+Verificando se existem intervalos que não possuem dados válidos na EMA alvo
+
+```{r}
+have_valid_data_list <- list()
+have_valid_data_list_sup <- list()
+
+no_have_valid_data_list <- list()
+no_have_valid_data_list_sup <- list()
+length_list <- list()
+
+# Gerando lista de TRUE e FALSE que será usada como referência nas demais aplicações
+for (e in seq_along(daily_data_wide_list)) {
+  for (i in seq_along(daily_data_wide_list[[1]])) {
+    have_valid_data_list_sup[[i]] <-
+      ifelse(
+        test = all((!is.na((daily_data_wide_list[[e]][[i]])$x)) == FALSE),
+        yes = FALSE,
+        no = TRUE)
+    names(have_valid_data_list_sup)[i] <- names(daily_data_wide_list[[e]])[i]
+    }
+  have_valid_data_list[[e]] <- have_valid_data_list_sup
+  names(have_valid_data_list)[e] <- names(daily_data_wide_list)[e]
+}
+
+# Verificando se existem intervalos na EMA alvo em que não existam dados
+for (e in seq_along(have_valid_data_list)) {
+  no_have_valid_data_list_sup[[e]] <- names(which(!unlist(have_valid_data_list[[e]])))
+  names(no_have_valid_data_list_sup)[e] <- names(have_valid_data_list)[e]
+  length_list[e] <- length(no_have_valid_data_list_sup[[e]]) != 0
+  }
+no_have_valid_data_list <- no_have_valid_data_list_sup[unlist(length_list)]
+no_have_valid_data_list
+
+# Removendo lista suporte
+rm(have_valid_data_list_sup)
+
+# Lista completa
+#View(have_valid_data_list)
+
+################################################################################
+# # Script que será usado como base nas próximas aplicações (NÃO EXECUTÁVEL)
+# for (e in seq_along(have_valid_data_list)) {
+#   for (i in seq_along(have_valid_data_list[[1]])) {
+#     if (have_valid_data_list[[e]][[i]] == TRUE) {
+#       *NOMEDALISTA*_list_int[[i]] <- *EQUACOES*
+#       }
+#     if (have_valid_data_list[[e]][[i]] == FALSE) {
+#       *NOMEDALISTA*_list_int[[i]] <- TEXT_FALSE
+#       }
+#     names(*NOMEDALISTA*_list_int)[i] <- names(have_valid_data_list[[e]])[i]
+#     }
+#   *NOMEDALISTA*_list[[e]] <- *NOMEDALISTA*_list_int
+#   names(*NOMEDALISTA*_list)[e] <- names(have_valid_data_list)[e]
+#   }
+# 
+# View(*NOMEDALISTA*_list)
+```
+
+```{r}
+# e = 2; i = 1
+# Caso: Ideal.
+# EMA Alvo: Apresenta porcentagem de dados válidos diferente de zero.
+# EMAs Vizinhas: Todas apresentam porcentagem de dados válidos diferente de zero.
+# Aplicação: Neste caso, todas as EMAs são utilizadas.
+
+# e = 1 ; i = 1
+# Caso: Não ideal, e corrigível.
+# EMA Alvo: Apresenta porcentagem de dados válidos diferente de zero.
+# EMAs Vizinhas: Nem todas apresentam porcentagem de dados válidos diferente de zero.
+# Aplicação: Neste caso, as EMAs vizinhas que apresentaram porcentagem nula são removidas.
+
+# e = 78; i = 1
+# Caso: Não ideal, e não corrigível.
+# EMA Alvo: Não apresenta porcentagem de dados válidos diferente de zero.
+# EMAs Vizinhas: A porcentagem de dados torna-se irrelevante (podendo ser nula ou não), uma vez que não existem dados na EMA alvo para comparação.
+# Aplicação: Neste caso, o teste não é aplicável para a EMA alvo neste intervalo.
+
+# Nota 4: na EMA A882 (e = 78), até o intervalo i = 3, somente existem valores NAs, expandindo para o intervalo i = 4, resulta que até os primeiros 182 dias, somente possuí valores NAs.
+```
+
+
+########################### CONTINUAR AQUI #####################################
+
+# Aplicação do teste
+
+```{r}
+e = 2; i = 1  # caso ideal
+#e = 1; i = 1  # caso não ideal, e corrigivel
+#e = 78; i = 1  # caso não ideal, e não corrigivel
+
+DAYLE_DATA_WIDE <- daily_data_wide_list[[e]][[i]]
+HAVE_VALID_DATA <- have_valid_data_list[[e]][[i]]
+```
+
+```{r}
+data_test <- DAYLE_DATA_WIDE
+valid_test <- HAVE_VALID_DATA
+
+regression.model.function(
+  DAYLE_DATA_WIDE = data_test,
+  HAVE_VALID_DATA = valid_test,
+  f = 3)
+```
+
+
+
+
+

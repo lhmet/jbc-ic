@@ -135,9 +135,9 @@ Intervalos com aplicabilidade do TRE são aqueles que:
 
 - `M` (neste caso 10) EMAs vizinhas tenham 50% de dados disponíveis 
 
-Para uma EMA alvo, pode obter-se a tabela de controle de aplicabilidade do TRE, com o código abaixo.
 
-```{r}
+
+```{r, include = FALSE}
 check_disp_int <- check_aws_srt_feasibility(
   disp_intervals_all = disp_intervals_sel,
   aws_target = "A882",
@@ -149,13 +149,20 @@ unnest(check_disp_int)
 #check_disp_int[5, "neighbors_checked"][[1]]
 ```
 
-O que pode ser expandido para as demais EMAs alvo usando o código a seguir.
+A tabela de controle de aplicabilidade do TRE para todas EMAs é obtida com o código a seguir.
 
 ```{r}
 aws_targets <- unique(disp_intervals_sel$site)
 aws_targets
-check_disp_int_inmet <- map_df(aws_targets, ~check_aws_srt_feasibility(aws_target = .x))
+check_disp_int_inmet <- check_srt_feasibility(
+    aws_targets,
+    disp_intervals_all = disp_intervals_sel,
+    perc_ref = PERC_REF,
+    neighborhood = neighbors,
+    m = M
+  )
 
+check_disp_int_inmet
 #a882 <- filter(check_disp_int_inmet, target == "A882") 
 #a882[4, "neighbors_checked"][[1]]
 #a882[5, "neighbors_checked"][[1]]
