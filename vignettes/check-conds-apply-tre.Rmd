@@ -179,37 +179,3 @@ check_disp_int_inmet_ok
 rio::export(check_disp_int_inmet_ok, file = "../output/check_disp_int_inmet_ok.RDS")
 ```
 
-
-# Aplicação do TRE
-
-
-Seleção dos dados diários.
-
-
-```{r}
-aws_target <- "A882"
-
-check_disp_int_target <- filter(check_disp_int_inmet_ok, target == aws_target) %>%
-  unnest()
-
-neighbors_o <- c(aws_target, unique(check_disp_int_target$neighbors_checked))
-
-data %>%
-  filter(
-    site %in% neighbors_o,
-    int %in% unique(check_disp_int_target$int)
-  ) %>%
-  spread(site, variable) %>%
-  select(date, int, one_of(neighbors_o))
-
-```
-
-
-```{r}
-# para cada ref 
-#      roda teste espacial
-```
-
-
-<!-- Dados estruturados com formato sililar ao do exemplo de aplicação do método. O formato dos dados é com a data na 1ª coluna, a EMA de referência na 2ª coluna e as EMAs vizinhas nas demais colunas. -->
-
