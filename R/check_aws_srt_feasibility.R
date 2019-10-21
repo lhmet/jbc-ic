@@ -5,6 +5,8 @@ check_aws_srt_feasibility <- function(
   perc_ref = PERC_REF,
   neighborhood = neighbors,
   m = M) {
+  
+  # neighbors stations codes
   neighbors_target <- stations_neighbors(neighbors = neighbors, aws_id = aws_target, M = Inf)
   
   check_disp_int <- disp_intervals_all %>%
@@ -24,18 +26,19 @@ check_aws_srt_feasibility <- function(
     slice(1:(m + 1)) %>% # spread(site, perc_valid)
     # adiciona o codigo da EMA target
     mutate(target = aws_target) %>%
-    arrange_vars(c("target" = 1)) %>%
     # move a EMA target para primeira coluna
+    arrange_vars(c("target" = 1)) %>%
     ungroup() %>%
     # agrupa por intervalo e EMA alvo para aninhar os dados (sites e perc_valid)
     group_by(target, int) %>%
     nest(site, perc_valid)
   
-  
+  # function to check that the target aws have avaialable data
+  check_target_aws <- function(x) !is.na(x[1])
   
   check_disp_int <- mutate(check_disp_int,
                            # inclui coluna indicativa da disponibilidade de dados na target
-                           is_available = map_lgl(data, ~f(.$perc_valid)),
+                           is_available = map_lgl(data, ~check_target_aws(.$perc_valid)),
                            # lista das M EMAs vizinhas com disponibilidade verificada
                            data = map(data, ~as.character(.$site[-1]))
   ) %>%

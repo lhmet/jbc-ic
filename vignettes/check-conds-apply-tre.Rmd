@@ -22,6 +22,7 @@ source("../R/network-dists.R")
 source("../R/get-aws-neighborhood.R")
 source("../R/select-data-SRT.R")
 source("../R/utils.R")
+source("../R/check_aws_srt_feasibility.R")
 ```
 
 # Dados necessários
@@ -111,7 +112,9 @@ A disponibilidade de cada EMA por intervalo não muda então podemos realizar es
 #   gather(site, perc_valid, -int) %>%
 #   arrange(int, site)
 
-disp_intervals <- rio::import("../output/disp_intervals_TRE.RDS")
+disp_intervals <- rio::import("../output/disp_intervals_TRE.RDS") %>%
+  as_tibble()
+
 disp_intervals_sel <- disp_intervals %>%
   filter(int %in% daily_data_wide$int)
 disp_intervals_sel
@@ -132,15 +135,21 @@ Intervalos com aplicabilidade do TRE são aqueles que:
 
 - `M` (neste caso 10) EMAs vizinhas tenham 50% de dados disponíveis 
 
-Para uma EMA alvo, obtém a tabela de controle de aplicabilidade do TRE.
+Para uma EMA alvo, pode obter-se a tabela de controle de aplicabilidade do TRE, com o código abaixo.
 
 ```{r}
-check_disp_int <- check_aws_srt_feasibility(aws_target = "A882")
+check_disp_int <- check_aws_srt_feasibility(
+  disp_intervals_all = disp_intervals_sel,
+  aws_target = "A882",
+  perc_ref = PERC_REF,
+  neighborhood = neighbors,
+  m = M)
 unnest(check_disp_int)
 #check_disp_int[4, "neighbors_checked"][[1]]
 #check_disp_int[5, "neighbors_checked"][[1]]
 ```
 
+O que pode ser expandido para as demais EMAs alvo usando o código a seguir.
 
 ```{r}
 aws_targets <- unique(disp_intervals_sel$site)
