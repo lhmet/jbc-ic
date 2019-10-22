@@ -111,14 +111,11 @@ A disponibilidade de cada EMA por intervalo não muda então podemos realizar es
 #   dplyr::summarise_at(vars(-date), .funs = ~percent_valid(.)) %>%
 #   gather(site, perc_valid, -int) %>%
 #   arrange(int, site)
-
 disp_intervals <- rio::import("../output/disp_intervals_TRE.RDS") %>%
   as_tibble()
-
 disp_intervals_sel <- disp_intervals %>%
   filter(int %in% daily_data_wide$int)
 disp_intervals_sel
-
 # versão ampla
 disp_intervals_sel_wide <- disp_intervals_sel %>% 
   select(int, site, perc_valid) %>%
