@@ -8,15 +8,15 @@ output:
 
 # Objetivos
 
-O objetivo deste documento é determinar a disponibilidade de dados para a aplicação do Teste de Regressão Espacial (TRE). O TRE requer que os dados divididos em intervalos de tempo fixo (60 dias). 
+O objetivo deste documento é determinar a disponibilidade de dados para a aplicação do Teste de Regressão Espacial (TRE). O TRE requer que os dados divididos em intervalos de tempo fixo (p.ex.: a cada 60 dias). 
 
-Então determinou-se:
+Então antes de poder aplicar o teste precisamos conhecer:
 
-- a disponibilidade de dados (dados não faltantes ou válidos) por intervalo fixo por EMA  
+- a disponibilidade de dados (quantidade de dados válidos, ou não faltantes) por intervalo fixo em cada EMA  
 
-- a disponibilidade de dados por intervalo fixo considerando todas EMAs
+- a disponibilidade de dados geral (considerando todas EMAs) por intervalo fixo
 
-- o maior período consecutivo de intervalos fixos com disponibilidade de dados acima de um limiar de 95% de disponibilidade
+- o maior período de intervalos fixos consecutivos com disponibilidade acima de um dado limiar de disponibilidade (p.ex.: 95%)
 
 
 # Pré-configurações
@@ -25,10 +25,9 @@ Então determinou-se:
 # Limpando área
 rm(list = ls())
 
-# Carregando pacotes necessários
-easypackages::libraries(
-  c("dplyr", "tidyverse", "ggfortify", "lubridate", "modelr", "fs")
-  )
+# Carregando pacotes necess
+pcks <- c("dplyr", "tidyverse", "ggfortify", "lubridate", "modelr", "fs")
+easypackages::libraries(pcks)
 
 # Carregando scripts necessários
 source("../R/crv_detect.R")
@@ -38,6 +37,7 @@ source("../R/network-dists.R")
 # e inclui um indice 'proximity' para uso na seleção
 # das n EMAs mais próximas a uma EMA alvo
 source("../R/get-aws-neighborhood.R")
+source("../R/add_intervals.R")
 ```
 
 # Dados
@@ -58,7 +58,7 @@ var_info
 
 # Disponibilidade dos dados
 
-Para testar o TRE é importante conhecer a distribuição dos períodos consecutivos de janelas temporais (`TIME_INTERVAL`) acima de um dado limiar de disponibilidade. Assim podemos selecionar o maior período consecutivo para testar o método, evitando assim casos mais problemáticos associados a disponibilidade de dados que tornam inviável a plicação do método.
+Para testar o TRE é importante conhecer a distribuição dos períodos consecutivos de janelas temporais (`TIME_INTERVAL`) acima de um dado limiar de disponibilidade. Assim obtemos o maior período consecutivo de alta disponibilidade de dados para testar o método. Com este procedimento evitamos casos problemáticos (quanto a disponibilidade de dados) que inviabilizam sua a plicação do método.
 
 
 ```{r}
@@ -87,32 +87,15 @@ daily_data
 #daily_data %>% filter(site == "A802") 
 ```
 
-Determinando o total de dias por EMA no período  `r min(daily_data$date)` a `r max(daily_data$date)`.
-
-```{r}
-# Número de dias de cada EMA
-n_days_emas <-
-  daily_data %>%
-  group_by(site) %>%
-  summarise(n_days = n(), start = min(date), end = max(date)) #3288
-n_days_emas
-unique(n_days_emas$n_days)
-```
-
 ## Disponibilidade geral de dados por período de intervalos de tempo
 
-Para calcular a disponibilidade de observações em cada janela de tempo (`TIME_INTERVAL`) criou-se um índice para identificar o número de período com tamanho `TIME_INTERVAL`. Este índice é a referência no agrupamento dos dados e foi chamado `int` . A partir deste índice obtém-se as informações de disponibilidade em cada intervalo.
 
-> O cálculo abaixo só é válido se todas EMAs tiverem o mesmo `ndays` na tabela `n_days_emas`.
+O tamanho `TIME_INTERVAL` default é de 60 dias. Para identificar cada um desses períodos criou-se um índice para agrupar os dados, chamado `int` . A partir deste índice obtêm-se as informações de disponibilidade em cada intervalo.
 
 
 ```{r}
-daily_data <- daily_data %>%
-  group_by(site) %>%
-  # mudar para time_interv
-  mutate(int = rep(1:(trunc(unique(n_days_emas$n_days) / TIME_INTERVAL) + 1), 
-                   each = TIME_INTERVAL)[1:(n())]
-         )
+daily_data <- add_intervals(dlydata = daily_data, interval_size = TIME_INTERVAL)
+daily_data
 saveRDS(daily_data, file = "../output/tar-data-inmet-2008-2016-daily-interval60.RDS")
 ```
 
