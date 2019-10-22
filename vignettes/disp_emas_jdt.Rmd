@@ -8,9 +8,9 @@ output:
 
 # Objetivos
 
-O objetivo deste documento é determinar a disponibilidade de dados para a aplicação do Teste de Regressão Espacial (TRE). O TRE requer que os dados divididos em intervalos de tempo fixo (p.ex.: a cada 60 dias). 
+O objetivo deste documento é determinar a disponibilidade de dados para a aplicação do Teste de Regressão Espacial (TRE). O TRE e aplicado aos dados divididos em intervalos de tempo fixo (p.ex.: a cada 60 dias). 
 
-Então antes de poder aplicar o teste precisamos conhecer:
+Então antes de poder aplicá-lo precisamos conhecer:
 
 - a disponibilidade de dados (quantidade de dados válidos, ou não faltantes) por intervalo fixo em cada EMA  
 
@@ -49,12 +49,6 @@ var_data <- rio::import("../output/s08_data_sel.rds") %>% as_tibble
 var_data
 ```
 
-Metadados das EMAs.
-
-```{r}
-var_info <- rio::import("../output/summary_80.rds") %>% as_tibble
-var_info
-```
 
 # Disponibilidade dos dados
 
