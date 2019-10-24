@@ -40,6 +40,7 @@ check_aws_srt_feasibility <- function(
     tidyr::nest(site, perc_valid)
 
   # function to check that the target aws have avaialable data
+  # expected to be used inside a 'group(site)'
   check_target_aws <- function(x) !is.na(x[1])
 
   check_disp_int <- dplyr::mutate(check_disp_int,

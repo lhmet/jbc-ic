@@ -13,8 +13,8 @@
 #' @export
 #'
 #' @examples
-network_dists <- function(netw_ref = coords_ngb, 
-                          netw_aux = coords_ngb,
+network_dists <- function(netw_ref, 
+                          netw_aux = netw_ref,
                           all_pairs = TRUE,
                           lon_lat = TRUE,
                           dx_max = NA

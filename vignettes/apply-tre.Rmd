@@ -20,20 +20,145 @@ easypackages::libraries(
 # Carregando scripts necessários
 source("../R/network-dists.R")
 source("../R/get-aws-neighborhood.R")
+source("../R/daily_summary.R")
 source("../R/select-data-SRT.R")
+
+source("../R/check_aws_srt_feasibility.R")
+source("../R/add_intervals.R")
 source("../R/utils.R")
+source("../R/spatial_regression_test-v2.R")
+
 ```
+
+# Parâmetros
+
+```{r}
+M = 10
+interval_size = 60
+aws_target = "A882"
+aws_variable = "tavg" 
+perc_ref = 50 
+r2_threshold = 0.55  
+```
+
 
 # Dados necessários
 
+Metadados das EMAs
 
 ```{r}
-check_disp_int_inmet_ok <- rio::import("../output/check_disp_int_inmet_ok.RDS")
-check_disp_int_inmet_ok
+meta_data <- rio::import("../output/summary_80.rds") %>% as_tibble
+meta_data
 ```
+
+tabela de vizinhança entre as EMAs.
+
 ```{r}
-data <- rio::import("../output/tar-data-inmet-2008-2016-daily-interval60.RDS")
-data
+neigh <- get_aws_neighborhood(meta_data, outfile = NULL)
+neigh
+```
+
+
+
+Dados diários 
+
+```{r}
+daily_data <- rio::import("../output/s08_data_sel.rds") %>% 
+  # daily averages
+  daily_summary(col_vars = aws_variable)
+daily_data
+```
+
+
+Dados diários com intervalo e em formato amplo.
+
+```{r}
+interval_data <- daily_data %>%
+  add_intervals(interval_size = 60) #%>%
+  #spread(site, !!aws_variable)
+interval_data
+```
+
+
+  
+  
+
+Seleção de dados para aplicação do TRE à todas EMAs.
+
+```{r}
+(targets <- unique(interval_data$site))
+```
+
+```{r}
+tre_data <- map_df(
+  targets,
+  ~select_data_SRT(
+    data = interval_data,
+    neighbors = neigh,
+    aws_code = .,
+    m = M
+  )
+) %>%
+  arrange_vars(c("target" = 1))
+#filter(tre_data, target == "A872") %>% View()
+tre_data
+```
+
+
+```{r}
+#tre_data %>% filter(!is_target)
+# aninha dados para o tre agrupando por target
+tmp <- tre_data %>%
+  group_by(target) %>%
+  group_nest()
+
+tmp[["data"]][[1]]
+
+
+
+stations_neighbors(neighbors = neigh, aws_id = aws_target, M = M)
+
+f <- function(X) filter(X, is_target) %>% pull(site) %>% first()
+f(tmp[["data"]][[1]])
+
+# dados para o tre em formato wide 
+tmp2 <- mutate(tmp[c(1, nrow(tmp)),],
+  data = map(
+    .x = data,
+    .f = tidyr::spread,
+    site,
+    !!aws_variable
+  ),
+  id = map(data, ~f(.x))
+  )
+
+
+  )
+  # ordenando por proximidade a alvo
+  data = map(
+    .x = data,
+    .f = dplyr::select,
+    one_of(
+      c("date", "int", 
+        stations_neighbors(
+          neighbors = neigh, 
+          aws_id = dplyr::filter(data, is_target) %>% pull(site) %>% first(),
+          M = M
+          )
+        )
+    )
+  ),
+)
+tmp2[["data"]][[1]]
+tmp2[["id"]]
+dplyr::filter(tmp[["data"]][[1]], is_target) %>% pull(site) %>% first()
+tmp2[["data"]][[2]]
+
+#neigh %>% filter(ref == aws_code) %>% head(10) %>% pull(aux)
+```
+
+```{r}
+tmp
 ```
 
 

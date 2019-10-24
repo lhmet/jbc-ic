@@ -1,0 +1,273 @@
+---
+title: "Aplicação do TRE"
+output: 
+  html_notebook: 
+    number_sections: yes
+    toc: yes
+---
+
+# Pré-configurações
+
+```{r, message=FALSE, warning=FALSE}
+# Limpando área
+rm(list = ls())
+
+# Carregando pacotes necessários
+easypackages::libraries(
+  c("dplyr", "tidyverse", "ggfortify", "lubridate", "modelr", "fs")
+  )
+
+# Carregando scripts necessários
+source("../R/network-dists.R")
+source("../R/get-aws-neighborhood.R")
+source("../R/select-data-SRT.R")
+source("../R/utils.R")
+source("../R/spatial_regression_test_v4.R")
+```
+
+# Constantes iniciais
+```{r}
+r2_threshold <- 0.50 # limiar do coeficiente de determinação (variância mínima explicada pela EMA vizinha em relação a EMA alvo)
+#r2_threshold <- 0.55
+f <- 3
+```
+
+
+# Dados necessários
+```{r}
+check_disp_int_inmet_ok <- rio::import("../output/check_disp_int_inmet_ok.RDS")
+check_disp_int_inmet_ok
+```
+
+```{r}
+daily_data <-
+  rio::import("../output/tar-data-inmet-2008-2016-daily-interval60.RDS") %>%
+  dplyr::select(site, int, everything())
+daily_data
+```
+
+# Aplicação do TRE
+
+Seleção dos dados diários.
+
+```{r}
+e = 1; i = 1 # caso com coluna extra somente com NAs
+#e = 2; i = 1 # caso ideal
+
+################################################################################
+#e = 21 # ema_A822
+#i = 11 # problema: tab_glance$adj.r.squared < r2_threshold
+#i = 12 # problema: tab_glance$adj.r.squared < r2_threshold
+
+#e = 32
+#i = 6 # problema: tab_glance$adj.r.squared < r2_threshold
+
+#e = 51
+#i = 11 #erro estranho
+
+#e = 64
+#i = 5 # problema: tab_glance$adj.r.squared < r2_threshold
+
+################################################################################
+# EMA alvo com problemas
+aws_target <- (unique(daily_data$site))[e]
+
+#aws_int <- 27 # intervalo teste
+#aws_target <- "A882"
+#aws_target <- 'A802' #'caso ideal' do meu script
+#aws_target <- 'A801' #'caso não ideal, e corrigivel' do meu script
+
+check_disp_int_target <-
+  filter(check_disp_int_inmet_ok, target == aws_target) %>%
+  unnest()
+
+neighbors_o <- c(aws_target, unique(check_disp_int_target$neighbors_checked))
+
+# Data frame para testar os problemas
+df_test <- daily_data %>% dplyr::filter(site %in% neighbors_o, int %in% unique(check_disp_int_target$int))
+
+# Intervalo da EMA alvo com problemas
+aws_int <- (unique(df_test$int))[i]
+
+daily_data_wide_target <-
+  daily_data %>%
+  dplyr::filter(
+    site %in% neighbors_o,
+    int %in% unique(check_disp_int_target$int)
+  ) %>%
+  tidyr::spread(site, variable) %>%
+  dplyr::select(date, int, one_of(neighbors_o)) %>%
+  rename("x" = aws_target) %>%
+  dplyr::filter(int == aws_int) %>%
+  dplyr::mutate(ema = aws_target) %>%
+  dplyr::select(ema, int, date, x, everything())
+daily_data_wide_target
+
+# spatial_regression_test(
+#  DAYLE_DATA_WIDE = daily_data_wide_target,
+#  R2_THRESHOLD = r2_threshold,
+#  f = f)
+
+################################################################################
+is_most_valid <- function(x) all(!is.na(x))
+sel <- c(t(apply(daily_data_wide_target,2 , is_most_valid)))
+dplyr::select(daily_data_wide_target, which(sel))
+  
+
+```
+
+```{r}
+# teste
+DAYLE_DATA_WIDE = daily_data_wide_target
+R2_THRESHOLD = r2_threshold
+f = f
+```
+
+```{r}
+# erro 1
+
+# Modelo de regressão
+reg_model <- function(df) {lm(x ~ y, data = df, na.action = na.exclude)}
+# Aplicando a regressão entre a EMA de referência e cada EMA vizinha
+tab_by_station <-
+  DAYLE_DATA_WIDE %>%
+  select(-c(ema, int)) %>%
+  # id: identificador das EMAs, y: valores da variável nas EMAs vizinhas
+  gather(id, y, -c(x, date)) %>%
+  group_by(id) %>%
+  nest() %>%
+  mutate(model = map(data, reg_model)) %>%
+  mutate(
+    pred = map2(data, model, add_predictions),  # x'
+    resid = map2(data, model, add_residuals)) %>% # x - x'
+  ungroup()
+# Valores previstos ou estimados de temperatura das EMAs vizinhas via regressão linear simples
+tab_previstos <- unnest(tab_by_station, pred) %>% ungroup()
+# Tabela anterior em formato wide para visualização similar a do artigo de referência do SRT
+tab_previstos_wide <- 
+  tab_previstos %>% 
+  select(date, id, pred) %>% 
+  mutate(id = as.numeric(as.factor(id))) %>%
+  spread(id, pred) %>%
+  setNames(c("date", paste0("xlin", names(.)[-1])))
+# Qualidade do ajuste das regressões
+tab_glance <-
+  tab_by_station %>%
+  mutate(glance = map(model, broom::glance)) %>%
+  unnest(glance, .drop = TRUE) %>%
+  arrange(sigma)
+tab_glance_sel <-
+  tab_glance %>%
+  filter(r.squared > R2_THRESHOLD)
+
+tab_glance
+tab_glance_sel
+
+tab_glance$r.squared
+tab_glance$adj.r.squared
+#R2_THRESHOLD
+```
+
+
+```{#r}
+# ema_A822 [e = 21]:
+## int_37 [i = 11]:
+### 0.4918098 0.4659835 0.4522573 0.3991870 0.3889185 0.3867211 0.3802770 0.3673372 0.2131561 0.2849749
+## int_38 [i = 12]:
+### 0.4077836 0.3499331 0.3482816 0.3193249 0.2976736 0.2922226 0.2481213 0.2021724 0.1988448 0.1085922
+
+# ema_A833 [e = 32]
+## int_32 [i = 6]
+### 0.5383075 0.5364394 0.5016794 0.4889537 0.4763823 0.4394035 0.4300461 0.4156113 0.3826653 0.3511010 0.3492712
+
+# ema_A866 [e = 64]
+## s [i = 5]
+### 0.431689685  0.397470252  0.222014284  0.066969785  0.052182349  0.044738820  0.020137047  0.017638980  0.011908484  0.011339062 -0.004898608
+```
+
+
+```{#r}
+# para cada ref 
+#      roda teste espacial
+
+rm(e, i, spatial_regression_test_list, spatial_regression_test_list_int)
+
+spatial_regression_test_list <- list()
+spatial_regression_test_list_sup <- list()
+
+#e = 21 #int <- 11 #int <- 12
+#e = 32 #int <- 6
+#e = 51 #int <- 11
+#e = 64 #int <- 5
+
+
+#for (e in seq_along(unique(daily_data$site))) {
+  aws_target <- (unique(daily_data$site))[e]
+  check_disp_int_target <-
+    filter(check_disp_int_inmet_ok, target == aws_target) %>%
+    unnest()
+  neighbors_o <- c(aws_target, unique(check_disp_int_target$neighbors_checked))
+  daily_data_wide_target <-
+    daily_data %>%
+    dplyr::filter(
+      site %in% neighbors_o,
+      int %in% unique(check_disp_int_target$int)
+      ) %>%
+    tidyr::spread(site, variable) %>%
+    dplyr::select(date, int, one_of(neighbors_o)) %>%
+    dplyr::rename("x" = aws_target) %>%
+    dplyr::mutate(ema = aws_target) %>%
+    dplyr::select(ema, int, date, x, everything())
+  for (i in int) {
+#  for (i in seq_along(unique(daily_data_wide_target$int))) {
+    aws_int <- (unique(daily_data_wide_target$int))[i]
+    daily_data_wide_target_int <-
+      daily_data_wide_target %>%
+      dplyr::filter(int == aws_int)
+    yn <- 
+      daily_data_wide_target_int %>%
+      dplyr::select(-c(ema, int, date, x))
+    csumna <- yn %>% is.na() %>% colSums()
+    yn_sel <- names(yn)[csumna != nrow(daily_data_wide_target_int)]
+    daily_data_wide_target_int_sel <-
+      daily_data_wide_target_int %>%
+      dplyr::select(ema, int, date, x, yn_sel)
+    spatial_regression_test_list_sup[[i]] <-
+      spatial_regression_test(
+        DAYLE_DATA_WIDE = daily_data_wide_target_int_sel,
+        R2_THRESHOLD = r2_threshold,
+        f = f)
+    names(spatial_regression_test_list_sup)[[i]] <- paste0("int_", aws_int)
+    }
+  spatial_regression_test_list[[e]] <- spatial_regression_test_list_sup
+  names(spatial_regression_test_list)[[e]] <- paste0("ema_", aws_target)
+#  }
+
+View(spatial_regression_test_list)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,5 +1,5 @@
-spatial_regression_test <- function(DAYLE_DATA_WIDE, HAVE_VALID_DATA, f) {
-  if (HAVE_VALID_DATA == TRUE) {
+spatial_regression_test <- function(DAYLE_DATA_WIDE, R2_THRESHOLD, f) {
+#  if (HAVE_VALID_DATA == TRUE) {
     # Modelo de regressão
     reg_model <- function(df) {lm(x ~ y, data = df, na.action = na.exclude)}
     # Aplicando a regressão entre a EMA de referência e cada EMA vizinha
@@ -35,13 +35,7 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, HAVE_VALID_DATA, f) {
       filter(adj.r.squared > R2_THRESHOLD)
     N <- nrow(tab_glance_sel)
     # Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$
-    plot_target_01 <-
-      tab_glance_sel %>%
-      ggplot(aes(x = adj.r.squared, y = sigma)) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
-      theme_bw()
+    plot_target_01 <- plot_01_fun(tab_glance_sel = tab_glance_sel)
     # Termos necessários para equação 5 de Hubbard et al. 2012
     inv_sum_si2 <- sum(1/tab_glance_sel$sigma^2) # lado direito da eq. 5
     tab_N <- length(tab_glance_sel$sigma) # num d estações vizinhas - numerador do lado esquerdo da eq. 5
@@ -93,42 +87,28 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, HAVE_VALID_DATA, f) {
         vies = x - x_est)
     #      vies2 = x - x_est_2,
     #      vies3 = x - x_est_3)
-    # Verificação Viés
-    vies <- hydroGOF::gof(tab_resultado$x_est, tab_resultado$x)
+    # Verificação Viés e r2
+    vies <- hydroGOF::gof(sim = tab_resultado$x_est, obs = tab_resultado$x)
+    r2 <- vies[rownames(vies) == "R2"]
     # Verificação de que a observação caia no intervalo de confiança da estimativa pela regressão linear
     tab_susp <- 
       tab_resultado %>%
       mutate(
-        lower = x_est - f*slin, upper = x_est + f*slin,
+        sigma_lin = slin,
+        r2 = r2,
+        lower = x_est - f*slin,
+        upper = x_est + f*slin,
         #      lower = x_est_2 - f*slin, upper = x_est_2 + f*slin,
         suspect = !(x >= lower &  x <= upper)
       ) %>%
       #    select(date, x, x_est, lower, upper, suspect, x_est_2)
-      select(date, x, x_est, lower, upper, suspect)
+      select(date, x, x_est, sigma_lin, r2, lower, upper, suspect)
     # Gráfico da série temporal das observações, estimativas e IC.
-    plot_target_02 <-
-      tab_susp %>%
-      ggplot(aes(x = date, y = x)) +
-      geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
-      geom_point(colour = "red") +
-      #    geom_line(aes(x = date, y = x_est_2)) +
-      geom_line(aes(x = date, y = x_est)) +
-      theme_bw()
+    plot_target_02 <- plot_02_fun(tab_susp = tab_susp)
     # Gráfico de dispersão das observações e estimativas
     formula <- y ~ x
-    plot_target_03 <-
-      tab_susp %>%
-      #    ggplot(aes(x = x, y = x_est_2)) +
-      ggplot(aes(x = x, y = x_est)) +
-      geom_point(colour = "red") +
-      coord_equal() +
-      geom_smooth(method = "lm", formula = formula) +
-      ggpmisc::stat_poly_eq(aes(
-        label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
-        formula = formula, 
-        parse = TRUE, ) +
-      geom_abline(slope = 1, intercept = 0) +
-      theme_bw()
+    plot_target_03 <- plot_03_fun(tab_susp = tab_susp, formula = formula)
+    # Lista com os resultados que serão retornados
     rmf <- list()
     rmf[[1]] <- tab_resultado
     rmf[[2]] <- tab_susp
@@ -136,7 +116,53 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, HAVE_VALID_DATA, f) {
     rmf[[4]] <- plot_target_01
     rmf[[5]] <- plot_target_02
     rmf[[6]] <- plot_target_03
-  }
-  if (HAVE_VALID_DATA == FALSE) {
-    rmf <- "Teste não aplicado, devido ao fato da EMA alvo não possuir dados válidos para comparar com os dados das EMAs vizinhas."}
+#  }
+#  if (HAVE_VALID_DATA == FALSE) {
+#    rmf <- "Teste não aplicado, devido ao fato da EMA alvo não possuir dados válidos para comparar com os dados das EMAs vizinhas."}
   return(rmf) }
+
+# Relação entre o sigma das estimativas e o coeficiente R^2
+plot_01_fun <- function(tab_glance_sel) {
+  p01 <- 
+    tab_glance_sel %>%
+    ggplot2::ggplot(aes(x = adj.r.squared, y = sigma)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_smooth(method = "lm") +
+    ggplot2::labs(x = expression(R^2), y = expression(sigma~~(degree~C))) +
+    ggplot2::theme_bw()
+  return(p01)
+  }
+
+# Gráfico da série temporal das observações, estimativas e IC
+plot_02_fun <- function(tab_susp) {
+  p02 <- 
+    tab_susp %>%
+    ggplot2::ggplot(aes(x = date, y = x)) +
+    ggplot2::geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+    ggplot2::geom_point(colour = "red") +
+    #    geom_line(aes(x = date, y = x_est_2)) +
+    ggplot2::geom_line(aes(x = date, y = x_est)) +
+    ggplot2::theme_bw()
+  return(p02)
+  }
+
+# Gráfico de dispersão das observações e estimativa
+plot_03_fun <- function(tab_susp, formula) {
+  p03 <-
+    tab_susp %>%
+    #    ggplot(aes(x = x, y = x_est_2)) +
+    ggplot(aes(x = x, y = x_est)) +
+    geom_point(colour = "red") +
+    coord_equal() +
+    geom_smooth(method = "lm", formula = formula) +
+    ggpmisc::stat_poly_eq(aes(
+      label =  paste(..eq.label.., ..adj.rr.label.., sep = "~~")),
+      formula = formula, 
+      parse = TRUE) +
+    geom_abline(slope = 1, intercept = 0) +
+    theme_bw()
+  return(p03)
+  }
+
+
+

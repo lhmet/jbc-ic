@@ -4,7 +4,7 @@
 
 get_aws_neighborhood <- function(...,
                                  outfile = "../output/aws-neighbors-south-br.RDS") {
-  stopifnot(file.exists(outfile))
+  
 
   dists <-
     network_dists(...,
@@ -19,6 +19,7 @@ get_aws_neighborhood <- function(...,
     dplyr::mutate(proximity = dplyr::dense_rank(dis)) %>%
     dplyr::ungroup()
   if (!is.null(outfile)) {
+    stopifnot(file.exists(outfile))
     base::saveRDS(dists, file = outfile)
   }
 
