@@ -103,12 +103,59 @@ tre_data <- map_df(
   )
 ) %>%  arrange_vars(c("target" = 1))
 #filter(tre_data, target == "A872") %>% View()
+
 tre_data
+
+# todos sites tem 10 EMAs vizinhas
+tre_data %>%
+  group_by(target) %>%
+  summarise(nsites_difere = n_distinct(site)) %>%
+  distinct(nsites_difere) 
 ```
+
+Combinações possíveis entre pares de EMAs.
+
+```{r}
+aws_combs <- tre_data %>%
+  select(site) %>%
+  distinct() %>%
+  pull() %>%
+  combn(m = 2) %>%
+  t() %>%
+  as_tibble() %>%
+  set_names(c("aws1", "aws2"))
+aws_combs
+```
+
 
 
 ```{r}
 
+map_df(
+  targets,
+  function(itarget) {
+    #  itarget = "A822"
+    
+    # EMAs vizinhas por proximidade
+    aws_ord <- stations_neighbors(neigh, aws_id = itarget, M = M)
+
+    # Dados
+    data_int_wide <- tre_data %>%
+      # dados da target
+      filter(., target == itarget) %>%
+      # formato amplo
+      spread(site, !!aws_variable) %>%
+      # ordena cols por proximidade
+      select(target:int, one_of(aws_ord))
+    
+    # Combinações da alvo com as vizinhas
+    
+    
+  }
+)
+
+```
+ 
 
 #tre_data %>% filter(!is_target)
 # aninha dados para o tre agrupando por target
@@ -119,7 +166,6 @@ by_target_int[["data"]][[1]]
 
 teste1 <- by_target_int[c(1, nrow(by_target_int)), ] %>%
   mutate(.,
-    data = select(data, -is_target),     
     data = map(
       .x = data,
       .f = tidyr::spread,
@@ -127,8 +173,20 @@ teste1 <- by_target_int[c(1, nrow(by_target_int)), ] %>%
       !!aws_variable
     )
   )
-teste1[["data"]][[1]]  
-  mutate(data_wide = map2(data, code_target(data), select_data_SRT()))
+
+teste1 %>%
+mutate(., viz = code_target(.))
+
+
+teste1 %>%
+  mutate(viz = stations_neighbors(neigh, aws_id = .y)) %>%
+  mutate(data_wide_ord = map2(
+    .x = data,
+    .y = dummy,
+    .f = dplyr::select,
+    .x,
+    one_of(stations_neighbors(neigh, aws_id = .y))
+  ))
 
   
 
