@@ -22,6 +22,7 @@ source("../R/network-dists.R")
 source("../R/get-aws-neighborhood.R")
 source("../R/daily_summary.R")
 source("../R/select-data-SRT.R")
+source("../R/overlap.R")
 
 source("../R/check_aws_srt_feasibility.R")
 source("../R/add_intervals.R")
@@ -33,7 +34,7 @@ source("../R/spatial_regression_test-v2.R")
 # Parâmetros
 
 ```{r}
-M = 10
+M = 20
 interval_size = 60
 aws_target = "A882"
 aws_variable = "tavg" 
@@ -74,25 +75,40 @@ Dados diários com intervalo e em formato amplo.
 
 ```{r}
 interval_data <- daily_data %>%
-  add_intervals(interval_size = 60) #%>%
+  add_intervals(interval_size = interval_size) #%>%
   #spread(site, !!aws_variable)
 interval_data
 ```
 
 
-  
+```{r}
+interval_availab <- interval_data %>% #tail()
+  group_by(int, site) %>%
+  #summarise(N = n())
+  summarise(start_int = min(date),
+            end_int = max(date),
+            #tot_days = n(),
+            tot_valid = sum(!is.na(tavg)),
+            perc_valid = (tot_valid/n()) * 100
+            ) %>%
+  ungroup()
+interval_availab
+```
+
   
 
 Seleção de dados para aplicação do TRE à todas EMAs.
 
 Códigos de todas EMAs:
 ```{r}
+#unique(interval_data$site)
 (targets <- unique(interval_data$site))
 ```
 
 Dados de todas EMAs:
 
 ```{r}
+
 tre_data <- map_df(
   targets,
   ~select_data_SRT(
@@ -104,7 +120,8 @@ tre_data <- map_df(
 ) %>%  arrange_vars(c("target" = 1))
 #filter(tre_data, target == "A872") %>% View()
 
-tre_data
+# sort(unique(tre_data$target))
+# sort(unique(tre_data$site))
 
 # todos sites tem 10 EMAs vizinhas
 tre_data %>%
@@ -125,169 +142,77 @@ aws_combs <- tre_data %>%
   as_tibble() %>%
   set_names(c("aws1", "aws2"))
 aws_combs
+
+aws_combs %>% group_by(aws1) %>% tally()
 ```
 
 
 
 ```{r}
 
-map_df(
-  targets,
-  function(itarget) {
-    #  itarget = "A822"
-    
-    # EMAs vizinhas por proximidade
-    aws_ord <- stations_neighbors(neigh, aws_id = itarget, M = M)
+# tabela de ref para looping
+tab_int_site <- tre_data %>%
+  distinct(site, int) 
 
-    # Dados
+# para encontrar casos baseados na linha
+tab_int_site %>%
+  rowid_to_column() %>%
+  filter(site == "A852", int == 37)
+
+```
+ 
+ 
+```{r}
+result_srt <- map_df(
+  1:nrow(tab_int_site),
+  #c(1, nrow(tab_int_site)),
+  function(irow) {
+    #  irow = 200
+    # ema alvo
+    (itarget <- tab_int_site[irow, "site"][[1]])
+    # invervalo
+    (iint <- tab_int_site[irow, "int"][[1]])
+    
+    # EMAs vizinhas por proximidade -------------------------------------------
+    aws_ord <- stations_neighbors(neigh, aws_id = itarget, M = 20)
+
+    # Dados---------------------------------------------------------------------
     data_int_wide <- tre_data %>%
       # dados da target
-      filter(., target == itarget) %>%
+      filter(., target == itarget, int == iint) %>%
       # formato amplo
       spread(site, !!aws_variable) %>%
       # ordena cols por proximidade
       select(target:int, one_of(aws_ord))
     
-    # Combinações da alvo com as vizinhas
+    # Combinações da alvo com as vizinhas no intervalo--------------------------
+    site_colnames_data <- sort(stringr::str_extract(names(data_int_wide), "^A[0-9]{3}"))
+    target_combs_int <- aws_combs %>%
+      # filtra a alvo e as vizinhas que estão nos dados wide
+      filter(aws1 == itarget) %>%
+      filter(aws2 %in% site_colnames_data) %>%
+      mutate(overlap = overlap_combs(data_int_wide, .)/interval_size * 100) 
+      
+    # seleção das EMAs que tenham 50% de sobreposição com a target -------------
+    target_combs_sel <- filter(target_combs_int, overlap >= perc_ref)
+    # codigos das EMAs que atendem ao critério de sobreposição
+    sites_sel <- select(target_combs_sel, -overlap) %>% t() %>% c() %>% unique()
     
+    # dados das emas com sobreposicao >= 50% com a alvo e renomeia a alvo para x
+    data_int_wide_sel <- data_int_wide %>%
+      select(target:int, one_of(sites_sel)) %>%
+      rename("x" = itarget)
     
+    out_srt <- spatial_regression_test(data_int_wide_sel, R2_THRESHOLD = R2_THRESHOLD, f = f) %>%
+      mutate(site = itarget, int = iint) %>%
+      arrange_vars(c("site" = 1, "int" = 2)) %>%
+      as_tibble()
+    
+    return(out_srt)
   }
 )
 
+result_srt
 ```
  
-
-#tre_data %>% filter(!is_target)
-# aninha dados para o tre agrupando por target
-by_target_int <- tre_data %>% 
-  group_by(target, int) %>%
-  group_nest()
-by_target_int[["data"]][[1]]
-
-teste1 <- by_target_int[c(1, nrow(by_target_int)), ] %>%
-  mutate(.,
-    data = map(
-      .x = data,
-      .f = tidyr::spread,
-      site,
-      !!aws_variable
-    )
-  )
-
-teste1 %>%
-mutate(., viz = code_target(.))
-
-
-teste1 %>%
-  mutate(viz = stations_neighbors(neigh, aws_id = .y)) %>%
-  mutate(data_wide_ord = map2(
-    .x = data,
-    .y = dummy,
-    .f = dplyr::select,
-    .x,
-    one_of(stations_neighbors(neigh, aws_id = .y))
-  ))
-
-  
-
-tre_data %>%
-  group_split(target)
-  
-
-
-library(magrittr)
-
-# para um intervalo
-by_target_int[["data"]][[1]] %>%
-   stations_neighbors2(.,
-          neighbors = neigh, 
-          M = M
-          )
-  code_target(.) %>% print() %>%
-  # estrutura dados em formato requerido
-  spread(site, !!aws_variable)
-
-```
-
-
-
-
-stations_neighbors(neighbors = neigh, aws_id = aws_target, M = M)
-
-f <- function(X) filter(X, is_target) %>% pull(site) %>% first()
-f(tmp[["data"]][[1]])
-
-# dados para o tre em formato wide 
-tmp2 <- mutate(tmp[c(1, nrow(tmp)),],
-  data = map(
-    .x = data,
-    .f = tidyr::spread,
-    site,
-    !!aws_variable
-  ),
-  id = map(data, ~f(.x))
-  )
-
-
-  )
-  # ordenando por proximidade a alvo
-  data = map(
-    .x = data,
-    .f = dplyr::select,
-    one_of(
-      c("date", "int", 
-        stations_neighbors(
-          neighbors = neigh, 
-          aws_id = dplyr::filter(data, is_target) %>% pull(site) %>% first(),
-          M = M
-          )
-        )
-    )
-  ),
-)
-tmp2[["data"]][[1]]
-tmp2[["id"]]
-dplyr::filter(tmp[["data"]][[1]], is_target) %>% pull(site) %>% first()
-tmp2[["data"]][[2]]
-
-#neigh %>% filter(ref == aws_code) %>% head(10) %>% pull(aux)
-```
-
-```{r}
-tmp
-```
-
-
-# Aplicação do TRE
-
-
-Seleção dos dados diários.
-
-
-```{r}
-aws_target <- "A882"
-
-check_disp_int_target <- filter(check_disp_int_inmet_ok, target == aws_target) %>%
-  unnest()
-
-neighbors_o <- c(aws_target, unique(check_disp_int_target$neighbors_checked))
-
-data %>%
-  dplyr::filter(
-    site %in% neighbors_o,
-    int %in% unique(check_disp_int_target$int)
-  ) %>%
-  spread(site, variable) %>%
-  select(date, int, one_of(neighbors_o))
-
-```
-
-
-```{r}
-# para cada ref 
-#      roda teste espacial
-```
-
-
-<!-- Dados estruturados com formato sililar ao do exemplo de aplicação do método. O formato dos dados é com a data na 1ª coluna, a EMA de referência na 2ª coluna e as EMAs vizinhas nas demais colunas. -->
-
+ 
