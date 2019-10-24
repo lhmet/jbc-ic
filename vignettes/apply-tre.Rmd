@@ -85,9 +85,12 @@ interval_data
 
 Seleção de dados para aplicação do TRE à todas EMAs.
 
+Códigos de todas EMAs:
 ```{r}
 (targets <- unique(interval_data$site))
 ```
+
+Dados de todas EMAs:
 
 ```{r}
 tre_data <- map_df(
@@ -98,21 +101,56 @@ tre_data <- map_df(
     aws_code = .,
     m = M
   )
-) %>%
-  arrange_vars(c("target" = 1))
+) %>%  arrange_vars(c("target" = 1))
 #filter(tre_data, target == "A872") %>% View()
 tre_data
 ```
 
 
 ```{r}
+
+
 #tre_data %>% filter(!is_target)
 # aninha dados para o tre agrupando por target
-tmp <- tre_data %>%
-  group_by(target) %>%
+by_target_int <- tre_data %>% 
+  group_by(target, int) %>%
   group_nest()
+by_target_int[["data"]][[1]]
 
-tmp[["data"]][[1]]
+teste1 <- by_target_int[c(1, nrow(by_target_int)), ] %>%
+  mutate(.,
+    data = select(data, -is_target),     
+    data = map(
+      .x = data,
+      .f = tidyr::spread,
+      site,
+      !!aws_variable
+    )
+  )
+teste1[["data"]][[1]]  
+  mutate(data_wide = map2(data, code_target(data), select_data_SRT()))
+
+  
+
+tre_data %>%
+  group_split(target)
+  
+
+
+library(magrittr)
+
+# para um intervalo
+by_target_int[["data"]][[1]] %>%
+   stations_neighbors2(.,
+          neighbors = neigh, 
+          M = M
+          )
+  code_target(.) %>% print() %>%
+  # estrutura dados em formato requerido
+  spread(site, !!aws_variable)
+
+```
+
 
 
 

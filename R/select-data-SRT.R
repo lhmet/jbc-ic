@@ -1,3 +1,23 @@
+code_target <- function(x){
+  # x <- by_target_int[["data"]][[1]]
+  filter(x, is_target)[["site"]][1]
+}
+
+stations_neighbors2 <- function(aws_data, neighbors,  M = c(10, Inf), keep.target = TRUE) {
+  stopifnot(all(c("ref", "aux") %in% names(neighbors)), sign(M) == 1)
+  # aws_data = by_target_int[["data"]][[1]]; M = 10; neighbors = neigh; keep.target = TRUE
+  aws_id <- code_target(aws_data)
+  neigh_codes <- dplyr::filter(neighbors, ref == aws_id) %>%
+    dplyr::filter(proximity <= M + 1) %>%
+    dplyr::pull(aux)
+  
+  if (!keep.target) {
+    neigh_codes_strict <- neigh_codes[!neigh_codes %in% aws_id]
+    return(neigh_codes_strict)
+  }
+  neigh_codes
+}
+
 
 
 stations_neighbors <- function(neighbors, aws_id, M = c(10, Inf), keep.target = TRUE) {
@@ -34,9 +54,9 @@ select_data_SRT <- function(
   data4srt <- dplyr::filter(
     data, 
     site %in% neigh_codes) %>%
-    dplyr::mutate(target = aws_code, 
-                  is_target = if_else(site == aws_code, TRUE, FALSE)
-                  )
+    dplyr::mutate(target = aws_code)#, 
+    #              is_target = if_else(site == aws_code, TRUE, FALSE)
+    #              )
     
 
   return(data4srt)

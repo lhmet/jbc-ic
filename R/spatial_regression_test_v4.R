@@ -30,11 +30,24 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, R2_THRESHOLD, f) {
       mutate(glance = map(model, broom::glance)) %>% 
       unnest(glance, .drop = TRUE) %>%
       arrange(sigma)
-    tab_glance_sel <-
-      tab_glance %>%
-      filter(r.squared > R2_THRESHOLD)
+    
+    # lidando com casos de EMAs sem r2 > R2_THRESHOLD
+    if(any(tab_glance_sel$r.squared >= R2_THRESHOLD)){
+      tab_glance_sel <-
+        tab_glance %>%
+        filter(r.squared > R2_THRESHOLD)  
+    } else {
+      # pega a EMA com r2 menos pior
+      tab_glance_sel <-
+        tab_glance %>%
+        arrange(desc(r.squared)) %>%
+        slice(1)
+    }
+    
 #      filter(adj.r.squared > R2_THRESHOLD)
     N <- nrow(tab_glance_sel)
+
+    
     # Relação entre o $\sigma$ das estimativas e o coeficiente $R^2$
     plot_target_01 <- plot_01_fun(tab_glance_sel = tab_glance_sel)
     # Termos necessários para equação 5 de Hubbard et al. 2012
