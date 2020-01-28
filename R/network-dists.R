@@ -20,6 +20,9 @@ network_dists <- function(netw_ref,
                           dx_max = NA
                           ){
   
+  # netw_ref = ; netw_aux = 
+  
+  
   pts1 <- dplyr::select(netw_ref, lon, lat) %>%
     as.data.frame() # head(pts2)
   pts2 <- dplyr::select(netw_aux, lon, lat) %>%

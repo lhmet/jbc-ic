@@ -80,6 +80,7 @@ interval_data <- daily_data %>%
 interval_data
 ```
 
+Características de cada intervalo para todas EMAs: datas de início e fim, disponibilidade de dados.
 
 ```{r}
 interval_availab <- interval_data %>% #tail()
@@ -143,7 +144,14 @@ aws_combs <- tre_data %>%
   set_names(c("aws1", "aws2"))
 aws_combs
 
-aws_combs %>% group_by(aws1) %>% tally()
+aws_combs %>%
+  group_by(aws1) %>%
+  tally()
+
+aws_combs %>%
+  filter(aws1 == "A824")
+
+split(aws_combs$aws1, aws_combs$aws2) %>% View()
 ```
 
 
@@ -162,7 +170,10 @@ tab_int_site %>%
 ```
  
  
-```{r}
+```{r, eval = FALSE}
+
+#int, target
+
 result_srt <- map_df(
   1:nrow(tab_int_site),
   #c(1, nrow(tab_int_site)),
@@ -203,7 +214,7 @@ result_srt <- map_df(
       select(target:int, one_of(sites_sel)) %>%
       rename("x" = itarget)
     
-    out_srt <- spatial_regression_test(data_int_wide_sel, R2_THRESHOLD = R2_THRESHOLD, f = f) %>%
+    out_srt <- spatial_regression_test(data_int_wide_sel, R2_THRESHOLD, f) %>%
       mutate(site = itarget, int = iint) %>%
       arrange_vars(c("site" = 1, "int" = 2)) %>%
       as_tibble()
