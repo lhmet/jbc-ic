@@ -3,23 +3,23 @@ reg_model <- function(df) {
   lm(x ~ y, data = df, na.action = na.exclude)
 }
 
-spatial_regression_test <- function(DAYLE_DATA_WIDE, R2_THRESHOLD = 0.5, f = 3) {
+spatial_regression_test <- function(DAILY_DATA_WIDE, R2_THRESHOLD = 0.5, f = 3) {
 
-  # DAYLE_DATA_WIDE = data_int_wide_sel
+  # DAILY_DATA_WIDE = data_int_wide_sel
   stopifnot(
-    any(str_detect(names(DAYLE_DATA_WIDE), "A[0-9]{3}")),
-    "x" %in% names(DAYLE_DATA_WIDE),
-    all(c("target", "int") %in% names(DAYLE_DATA_WIDE))
+    any(str_detect(names(DAILY_DATA_WIDE), "A[0-9]{3}")),
+    "x" %in% names(DAILY_DATA_WIDE),
+    all(c("target", "int") %in% names(DAILY_DATA_WIDE))
   )
   # Ordem das EMAs vizinhas mais próximas à EMA alvo
   yn_order <-
-    DAYLE_DATA_WIDE %>%
+    DAILY_DATA_WIDE %>%
     dplyr::select(-c(target, int, date, x)) %>%
     names()
   
   # Aplicando a regressão entre a EMA de referência e cada EMA vizinha
   tab_by_station <-
-    DAYLE_DATA_WIDE %>%
+    DAILY_DATA_WIDE %>%
     select(-c(target, int)) %>%
     # id: identificador das EMAs, y: valores da variável nas EMAs vizinhas
     gather(site, y, -c(x, date)) %>%
@@ -75,7 +75,7 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, R2_THRESHOLD = 0.5, f = 3) 
   # yn_order %in% tab_glance_sel$id[-1]
   # Vamos filtrar os dados gerados anteriormente mantendo somente as EMAs selecionadas.
   data_wide_sel <-
-    DAYLE_DATA_WIDE %>%
+    DAILY_DATA_WIDE %>%
     select(c("date", "x", yn_order_sel))
   tab_by_station_sel <-
     tab_by_station %>%
@@ -136,7 +136,7 @@ spatial_regression_test <- function(DAYLE_DATA_WIDE, R2_THRESHOLD = 0.5, f = 3) 
   # Gráfico da série temporal das observações, estimativas e IC.
   # plot_target_02 <- plot_02_fun(tab_susp = tab_susp)
   # Gráfico de dispersão das observações e estimativas
-  formula <- y ~ x
+  #formula <- y ~ x
   # plot_target_03 <- plot_03_fun(tab_susp = tab_susp, formula = formula)
   # Lista com os resultados que serão retornados
   # rmf <- list()

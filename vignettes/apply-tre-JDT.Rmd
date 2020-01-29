@@ -8,10 +8,13 @@ output:
 
 # Pré-configurações
 
-```{r, message=FALSE, warning=FALSE}
+```{r}
 # Limpando área
 rm(list = ls())
+```
 
+
+```{r, message=FALSE, warning=FALSE}
 # Carregando pacotes necessários
 easypackages::libraries(
   c("dplyr", "tidyverse", "ggfortify", "lubridate", "modelr", "fs")
@@ -27,7 +30,7 @@ source("../R/overlap.R")
 source("../R/check_aws_srt_feasibility.R")
 source("../R/add_intervals.R")
 source("../R/utils.R")
-source("../R/spatial_regression_test-v2.R")
+source("../R/spatial_regression_test_v6.R")
 
 ```
 
@@ -40,6 +43,7 @@ aws_target = "A882"
 aws_variable = "tavg" 
 perc_ref = 50 
 r2_threshold = 0.55  
+f = 3
 ```
 
 
@@ -97,6 +101,7 @@ interval_availab
 ```
 
   
+# Seleção de dados
 
 Seleção de dados para aplicação do TRE à todas EMAs.
 
@@ -104,6 +109,7 @@ Códigos de todas EMAs:
 ```{r}
 #unique(interval_data$site)
 (targets <- unique(interval_data$site))
+length(targets)
 ```
 
 Dados de todas EMAs:
@@ -134,58 +140,49 @@ tre_data %>%
 Combinações possíveis entre pares de EMAs.
 
 ```{r}
-aws_combs <- tre_data %>%
-  select(site) %>%
-  distinct() %>%
-  pull() %>%
-  combn(m = 2) %>%
-  t() %>%
-  as_tibble() %>%
-  set_names(c("aws1", "aws2"))
-aws_combs
+# todas possíveis combinações de pares de EMAs 
+aws_combs2 <- tibble(aws1 = rep(targets, each = length(targets)), 
+           aws2 = rep(targets, times = length(targets))) %>%
+  filter(aws1 != aws2)
 
-aws_combs %>%
+aws_combs2 %>%
   group_by(aws1) %>%
   tally()
 
-aws_combs %>%
-  filter(aws1 == "A824")
-
-split(aws_combs$aws1, aws_combs$aws2) %>% View()
+#split(aws_combs2$aws1, aws_combs2$aws2) %>% View()
 ```
 
 
 
 ```{r}
-
 # tabela de ref para looping
 tab_int_site <- tre_data %>%
   distinct(site, int) 
+```
 
-# para encontrar casos baseados na linha
+A tabela acima será usada para o laço em cada linha, para selecionar a EMA alvo e o intervalo para aplicação do TRS. Pode ser útil saber como encontrar a linha onde ocorrer problemas no lopping abaixo. Isso pode ser feito conforme código abaixo.
+
+```{r}
 tab_int_site %>%
   rowid_to_column() %>%
   filter(site == "A852", int == 37)
-
 ```
  
  
 ```{r, eval = FALSE}
-
 #int, target
-
 result_srt <- map_df(
   1:nrow(tab_int_site),
   #c(1, nrow(tab_int_site)),
   function(irow) {
-    #  irow = 200
+    #  irow = 5
     # ema alvo
     (itarget <- tab_int_site[irow, "site"][[1]])
     # invervalo
     (iint <- tab_int_site[irow, "int"][[1]])
     
     # EMAs vizinhas por proximidade -------------------------------------------
-    aws_ord <- stations_neighbors(neigh, aws_id = itarget, M = 20)
+    aws_ord <- stations_neighbors(neigh, aws_id = itarget, M = 5) # M+1 pq inclui a própria EMA
 
     # Dados---------------------------------------------------------------------
     data_int_wide <- tre_data %>%
@@ -198,7 +195,7 @@ result_srt <- map_df(
     
     # Combinações da alvo com as vizinhas no intervalo--------------------------
     site_colnames_data <- sort(stringr::str_extract(names(data_int_wide), "^A[0-9]{3}"))
-    target_combs_int <- aws_combs %>%
+    target_combs_int <- aws_combs2 %>%
       # filtra a alvo e as vizinhas que estão nos dados wide
       filter(aws1 == itarget) %>%
       filter(aws2 %in% site_colnames_data) %>%
@@ -214,7 +211,7 @@ result_srt <- map_df(
       select(target:int, one_of(sites_sel)) %>%
       rename("x" = itarget)
     
-    out_srt <- spatial_regression_test(data_int_wide_sel, R2_THRESHOLD, f) %>%
+    out_srt <- spatial_regression_test(data_int_wide_sel, r2_threshold, f) %>%
       mutate(site = itarget, int = iint) %>%
       arrange_vars(c("site" = 1, "int" = 2)) %>%
       as_tibble()
