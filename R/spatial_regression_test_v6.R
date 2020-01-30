@@ -3,14 +3,42 @@ reg_model <- function(df) {
   lm(x ~ y, data = df, na.action = na.exclude)
 }
 
+
+
+output_template_srt <- function(x){
+  #x <- DAILY_DATA_WIDE
+  tibble(date = x$date,
+         x = x$x,
+         x_est = NA, 
+         sigma_lin = NA,
+         r2 = NA, 
+         lower= NA,
+         upper = NA,
+         suspect = NA)  
+}
+
+
 spatial_regression_test <- function(DAILY_DATA_WIDE, R2_THRESHOLD = 0.5, f = 3) {
 
-  # DAILY_DATA_WIDE = data_int_wide_sel
+  # DAILY_DATA_WIDE = data_int_wide_sel; R2_THRESHOLD = 0.5; f = 3
+  
+  # Drops columns in input data that are entirely NA.
+  is_usefull <- function(x) !all(is.na(x))
+  #wrangle::informative(DAILY_DATA_WIDE)
+  DAILY_DATA_WIDE <- select_if(DAILY_DATA_WIDE, is_usefull)
+  
+  if(all(is.na(DAILY_DATA_WIDE$x))){
+    return(output_template_srt(DAILY_DATA_WIDE))
+  }
+  
   stopifnot(
     any(str_detect(names(DAILY_DATA_WIDE), "A[0-9]{3}")),
     "x" %in% names(DAILY_DATA_WIDE),
     all(c("target", "int") %in% names(DAILY_DATA_WIDE))
   )
+  
+  
+  
   # Ordem das EMAs vizinhas mais próximas à EMA alvo
   yn_order <-
     DAILY_DATA_WIDE %>%

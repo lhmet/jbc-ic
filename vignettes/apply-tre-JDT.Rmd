@@ -157,7 +157,9 @@ aws_combs2 %>%
 ```{r}
 # tabela de ref para looping
 tab_int_site <- tre_data %>%
-  distinct(site, int) 
+  distinct(site, int) %>%
+  arrange(site, int)
+unique(tab_int_site$site)
 ```
 
 A tabela acima será usada para o laço em cada linha, para selecionar a EMA alvo e o intervalo para aplicação do TRS. Pode ser útil saber como encontrar a linha onde ocorrer problemas no lopping abaixo. Isso pode ser feito conforme código abaixo.
@@ -165,7 +167,7 @@ A tabela acima será usada para o laço em cada linha, para selecionar a EMA alv
 ```{r}
 tab_int_site %>%
   rowid_to_column() %>%
-  filter(site == "A852", int == 37)
+  filter(site == "A802", int == 1)
 ```
  
  
@@ -175,7 +177,7 @@ result_srt <- map_df(
   1:nrow(tab_int_site),
   #c(1, nrow(tab_int_site)),
   function(irow) {
-    #  irow = 5
+    #  irow = 56
     # ema alvo
     (itarget <- tab_int_site[irow, "site"][[1]])
     # invervalo
@@ -191,7 +193,7 @@ result_srt <- map_df(
       # formato amplo
       spread(site, !!aws_variable) %>%
       # ordena cols por proximidade
-      select(target:int, one_of(aws_ord))
+      select(target:int, one_of(aws_ord)) 
     
     # Combinações da alvo com as vizinhas no intervalo--------------------------
     site_colnames_data <- sort(stringr::str_extract(names(data_int_wide), "^A[0-9]{3}"))
@@ -203,13 +205,19 @@ result_srt <- map_df(
       
     # seleção das EMAs que tenham 50% de sobreposição com a target -------------
     target_combs_sel <- filter(target_combs_int, overlap >= perc_ref)
+    if(!nrow(target_combs_sel) > 0) {
+      data_int_wide %>% 
+        rename("x" = itarget) %>%
+        output_template_srt() %>%
+      return()
+    }
+    #target_combs_sel <- target_combs_int
     # codigos das EMAs que atendem ao critério de sobreposição
     sites_sel <- select(target_combs_sel, -overlap) %>% t() %>% c() %>% unique()
     
     # dados das emas com sobreposicao >= 50% com a alvo e renomeia a alvo para x
     data_int_wide_sel <- data_int_wide %>%
-      select(target:int, one_of(sites_sel)) %>%
-      rename("x" = itarget)
+      select(target:int, one_of(sites_sel)) 
     
     out_srt <- spatial_regression_test(data_int_wide_sel, r2_threshold, f) %>%
       mutate(site = itarget, int = iint) %>%
