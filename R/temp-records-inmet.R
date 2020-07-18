@@ -1,4 +1,56 @@
 
+# Excel file data address in github
+url_records_inmet_xls <- function(var_name = c("tmin", "tmax")) {
+ urls <- c(
+    tmin = "https://github.com/lhmet/jbc-ic/blob/master/data-raw/Temperatura-Minima-Absoluta_NCB_1961-1990.xls?raw=true",
+    tmax = "https://github.com/lhmet/jbc-ic/blob/master/data-raw/Temperatura-Maxima-Absoluta_NCB_1961-1990.xls?raw=true"
+  )
+ urls[var_name]
+}
+
+#url_records_inmet_xls()
+
+# write excel file from web to disk returning the local file
+down_xls <- function(iurl, ...) {
+  httr::GET(
+    iurl,
+    httr::write_disk(
+      temp_xls <- file.path(
+        tempdir(),
+        str_replace(
+          string = basename(
+            iurl
+          ),
+          pattern = "\\?raw=true",
+          replacement = ""
+        )
+      ),
+      ...
+    )
+  )
+  # httr::write_disk(tmin_xls <- str_replace(basename(url_tmin_xls), "\\?raw=true", ""))
+  
+  temp_xls
+}
+
+
+
+# Download excel files of tmax, tmin records
+temp_records_file_down <- function(
+                                   url_xls = url_records_inmet_xls(),
+                                   ...) {
+  map_chr(url_xls,down_xls, ...)
+}
+
+
+# dowloaded <- temp_records_file_down(overwrite = TRUE)
+# records <- temp_records_inmet(
+#   file_tmx = dowloaded[2],
+#   file_tmn = dowloaded[1]
+# )
+
+
+#---------------------------------------------------------------------------------------------------
 #' Read maximum and minimum air temperature record from INMET climatological stations 
 #'
 #' @param file_name full path to file
