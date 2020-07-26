@@ -48,7 +48,7 @@ crv_detect <- function(x, thresh = 0, min.steps = 2, numerate = FALSE){
   
    # numerate events of crv
    crv_enum <- cumsum(is_crv) * is_crv
-   crv_enum <- ifelse(crv_enum == 0, NA, crv_enum)
+   crv_enum <- data.table::fifelse(crv_enum == 0, NA, crv_enum)
    crv_enum_ts <- crv_enum[idx]
   
   return(crv_enum_ts)
